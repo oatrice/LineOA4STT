@@ -252,6 +252,13 @@ const app = new Elysia()
               break
             default:
               console.log(`📎 Other message type: ${event.message.type}`)
+              if (event.replyToken) {
+                await lineClient.replyMessage(event.replyToken, {
+                  type: 'text',
+                  text: 'ขออภัยครับ บอทยังไม่รองรับข้อความประเภทนี้ในตอนนี้ 🙏'
+                })
+              }
+              break
           }
         }
         
