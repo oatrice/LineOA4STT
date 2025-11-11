@@ -182,56 +182,45 @@ const LINE_CHANNEL_SECRET = process.env.LINE_CHANNEL_SECRET || 'your-line-channe
 
 // Custom Plugin สำหรับ Line Signature Validation
 const lineSignatureValidation = new Elysia({ name: 'line-signature' })
-  .derive({ as: 'scoped' }, ({ request }) => {
-    return {
-      validateLineSignature: async (body: string | Buffer) => {
-        try {
-          const signature = request.headers.get('x-line-signature')
-          
-          if (!signature) {
-            throw new Error('Missing x-line-signature header')
-          }
-
-          const hash = createHash('SHA256')
-            .update(body)
-            .digest('base64')
-          
-          const expectedSignature = `sha256=${hash}`
-          
-          if (signature !== expectedSignature) {
-            throw new Error('Invalid signature')
-          }
-          
-          return true
-        } catch (error) {
-          console.error('Signature validation error:', error)
-          return false
-        }
-      }
+  .onParse(async ({ request, set }) => {
+    const signature = request.headers.get('x-line-signature')
+    
+    if (!signature) {
+      console.error('⚠️ Missing x-line-signature header')
+      set.status = 401
+      return { status: 'error', message: 'Unauthorized: Missing signature' }
     }
+
+    const rawBody = await request.text()
+    
+    const hash = createHash('SHA256')
+      .update(rawBody)
+      .digest('base64')
+    
+    const expectedSignature = `sha256=${hash}`
+    
+    if (signature !== expectedSignature) {
+      console.error('⚠️ Invalid Line signature detected')
+      console.error('Headers:', Object.fromEntries(request.headers.entries()))
+      console.error('Raw Body:', rawBody)
+      console.error('Expected Signature:', expectedSignature)
+      console.error('Received Signature:', signature)
+      set.status = 401
+      return { status: 'error', message: 'Unauthorized: Invalid signature' }
+    }
+    
+    console.log('✅ Valid Line signature')
+    
+    // Return parsed JSON body for Elysia to use
+    return JSON.parse(rawBody)
   })
 
 // สร้าง Elysia App พร้อม Type-safe configuration
 const app = new Elysia()
   .use(lineSignatureValidation)
   .get('/', () => 'Line OA STT Bot is running!')
-  .post('/webhook', async ({ body, request, set, validateLineSignature }) => {
+  .post('/webhook', async ({ body, request, set }) => {
     try {
-      // แปลง body เป็น string สำหรับ validation
-      const bodyText = typeof body === 'string' ? body : JSON.stringify(body)
-      
-      // Validate Line signature
-      const isValidSignature = await validateLineSignature(bodyText)
-      
-      if (!isValidSignature) {
-        console.error('⚠️ Invalid Line signature detected')
-        console.error('Headers:', Object.fromEntries(request.headers.entries()))
-        set.status = 401
-        return { status: 'error', message: 'Unauthorized: Invalid signature' }
-      }
-      
-      console.log('✅ Valid Line signature')
-      
       // Type-safe parse ของ webhook payload
       const webhookData = body as LineWebhookPayload
       
