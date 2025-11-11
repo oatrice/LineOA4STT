@@ -5,7 +5,9 @@ import { createClient } from '@supabase/supabase-js'
 import { promises as fs } from 'fs'
 import * as path from 'path'
 import { Readable } from 'stream'
-import { SpeechClient } from '@google-cloud/speech'
+import { SpeechClient, protos } from '@google-cloud/speech'
+
+const AudioEncoding = protos.google.cloud.speech.v1.RecognitionConfig.AudioEncoding
 
 // Helper function to convert a Readable stream to a Buffer
 async function streamToBuffer(stream: Readable): Promise<Buffer> {
@@ -94,25 +96,39 @@ async function processAudioAsync(messageId: string, jobId: string, replyToken: s
 
     console.log(`✅ Audio file downloaded to: ${audioFilePath}`)
 
-    // 2. อัปเดต job record ด้วย path ไฟล์เสียง
+    // 3. ส่งไฟล์เสียงไปที่ Google Cloud Speech-to-Text API
+    const audio = {
+      content: audioBuffer.toString('base64'),
+    }
+    const config = {
+      encoding: AudioEncoding.LINEAR16,
+      sampleRateHertz: 16000, // Line audio มักจะเป็น 16kHz
+      languageCode: 'th-TH', // ภาษาไทย
+    }
+    const request = {
+      audio: audio,
+      config: config,
+    }
+
+    console.log('🎙️ Sending audio to Google STT API...')
+    const [response] = await speechClient.recognize(request as protos.google.cloud.speech.v1.IRecognizeRequest)
+    const transcription = response.results
+      ?.map(result => result.alternatives?.[0]?.transcript)
+      .join('\n') || ''
+    const confidence = response.results?.[0]?.alternatives?.[0]?.confidence || 0
+
+    console.log(`📝 Transcription Result: ${transcription}`)
+    console.log(`📊 Confidence: ${confidence}`)
+
+    // 4. อัปเดต job record ด้วยผลลัพธ์ STT
     await supabase
       .from('transcription_jobs')
       .update({
         audio_file_path: audioFilePath,
-        status: 'PROCESSING'
-      })
-      .eq('id', jobId)
-
-    // TODO: ในอนาคตจะ implement จริง (ส่งไป STT API)
-    // จำลองการทำงาน 3 วินาที
-    await new Promise(resolve => setTimeout(resolve, 3000))
-    
-    // Update job ว่าเสร็จแล้ว
-    await supabase
-      .from('transcription_jobs')
-      .update({
         status: 'COMPLETED',
-        transcript: 'นี่คือผลลัพธ์จากการแปลงเสียง (ตัวอย่าง)',
+        transcript: transcription,
+        confidence: confidence,
+        provider: 'google-cloud-stt',
         completed_at: new Date().toISOString()
       })
       .eq('id', jobId)
@@ -120,7 +136,7 @@ async function processAudioAsync(messageId: string, jobId: string, replyToken: s
     // ส่งผลลัพธ์กลับไปให้ user
     await lineClient.replyMessage(replyToken, {
       type: 'text',
-      text: '✨ เสร็จแล้วครับ!\n\nผลลัพธ์: นี่คือผลลัพธ์จากการแปลงเสียง (ตัวอย่าง)'
+      text: `✨ เสร็จแล้วครับ!\n\nผลลัพธ์: ${transcription}`
     })
 
     console.log(`✅ Completed job ${jobId}`)
