@@ -2,6 +2,19 @@ import { Elysia } from 'elysia'
 import { Client, middleware } from '@line/bot-sdk'
 import { createHash } from 'crypto'
 import { createClient } from '@supabase/supabase-js'
+import { promises as fs } from 'fs'
+import * as path from 'path'
+import { Readable } from 'stream'
+
+// Helper function to convert a Readable stream to a Buffer
+async function streamToBuffer(stream: Readable): Promise<Buffer> {
+  return new Promise((resolve, reject) => {
+    const chunks: Buffer[] = []
+    stream.on('data', (chunk) => chunks.push(chunk))
+    stream.on('end', () => resolve(Buffer.concat(chunks)))
+    stream.on('error', reject)
+  })
+}
 
 // Supabase client
 const supabase = createClient(
@@ -59,10 +72,34 @@ async function handleAudioMessage(event: LineWebhookEvent) {
 
 // ฟังก์ชันสำหรับประมวลผลเสียงแบบ async
 async function processAudioAsync(messageId: string, jobId: string, replyToken: string) {
+  let audioFilePath: string | undefined
   try {
-    // TODO: ในอนาคตจะ implement จริง
     console.log(`🔄 Processing audio ${messageId} for job ${jobId}`)
+
+    // 1. ดาวน์โหลดไฟล์เสียงจาก Line
+    const contentStream = await lineClient.getMessageContent(messageId)
+    const audioBuffer = await streamToBuffer(contentStream)
     
+    // สร้าง directory ชั่วคราวถ้ายังไม่มี
+    const tempDir = path.join(process.cwd(), 'temp_audio')
+    await fs.mkdir(tempDir, { recursive: true })
+
+    // กำหนดชื่อไฟล์และ path
+    audioFilePath = path.join(tempDir, `${messageId}.m4a`) // Line ส่งเป็น .m4a
+    await fs.writeFile(audioFilePath, audioBuffer)
+
+    console.log(`✅ Audio file downloaded to: ${audioFilePath}`)
+
+    // 2. อัปเดต job record ด้วย path ไฟล์เสียง
+    await supabase
+      .from('transcription_jobs')
+      .update({
+        audio_file_path: audioFilePath,
+        status: 'PROCESSING'
+      })
+      .eq('id', jobId)
+
+    // TODO: ในอนาคตจะ implement จริง (ส่งไป STT API)
     // จำลองการทำงาน 3 วินาที
     await new Promise(resolve => setTimeout(resolve, 3000))
     
@@ -95,6 +132,16 @@ async function processAudioAsync(messageId: string, jobId: string, replyToken: s
         error_message: error instanceof Error ? error.message : 'Unknown error'
       })
       .eq('id', jobId)
+  } finally {
+    // ลบไฟล์เสียงชั่วคราวหลังจากประมวลผลเสร็จ (หรือย้ายไปเก็บถาวร)
+    if (audioFilePath) {
+      try {
+        await fs.unlink(audioFilePath)
+        console.log(`🗑️ Deleted temporary audio file: ${audioFilePath}`)
+      } catch (cleanupError) {
+        console.error('❌ Error deleting temporary audio file:', cleanupError)
+      }
+    }
   }
 }
 
