@@ -14,6 +14,90 @@ const lineClient = new Client({
   channelAccessToken: process.env.LINE_CHANNEL_ACCESS_TOKEN || ''
 })
 
+// ฟังก์ชันสำหรับจัดการ audio messages
+async function handleAudioMessage(event: LineWebhookEvent) {
+  try {
+    if (!event.message || !event.replyToken || !event.source.userId) {
+      console.error('❌ Missing required fields for audio processing')
+      return
+    }
+
+    console.log(`🎵 Processing audio message: ${event.message.id}`)
+    
+    // 1. สร้าง job record ใน Supabase
+    const { data: job, error: insertError } = await supabase
+      .from('transcription_jobs')
+      .insert({
+        message_id: event.message.id,
+        user_id: event.source.userId,
+        reply_token: event.replyToken,
+        status: 'PENDING'
+      })
+      .select()
+      .single()
+
+    if (insertError) {
+      console.error('❌ Failed to create job:', insertError)
+      return
+    }
+
+    console.log(`✅ Created job ${job.id} for message ${event.message.id}`)
+
+    // 2. ตอบกลับ user ว่ากำลังประมวลผล
+    await lineClient.replyMessage(event.replyToken, {
+      type: 'text',
+      text: '🎵 กำลังแปลงเสียงเป็นข้อความ กรุณารอสักครู่ครับ...'
+    })
+
+    // 3. เริ่มการประมวลผลแบบ async (ไม่ block webhook response)
+    processAudioAsync(event.message.id, job.id, event.replyToken)
+
+  } catch (error) {
+    console.error('❌ Error handling audio message:', error)
+  }
+}
+
+// ฟังก์ชันสำหรับประมวลผลเสียงแบบ async
+async function processAudioAsync(messageId: string, jobId: string, replyToken: string) {
+  try {
+    // TODO: ในอนาคตจะ implement จริง
+    console.log(`🔄 Processing audio ${messageId} for job ${jobId}`)
+    
+    // จำลองการทำงาน 3 วินาที
+    await new Promise(resolve => setTimeout(resolve, 3000))
+    
+    // Update job ว่าเสร็จแล้ว
+    await supabase
+      .from('transcription_jobs')
+      .update({
+        status: 'COMPLETED',
+        transcript: 'นี่คือผลลัพธ์จากการแปลงเสียง (ตัวอย่าง)',
+        completed_at: new Date().toISOString()
+      })
+      .eq('id', jobId)
+
+    // ส่งผลลัพธ์กลับไปให้ user
+    await lineClient.replyMessage(replyToken, {
+      type: 'text',
+      text: '✨ เสร็จแล้วครับ!\n\nผลลัพธ์: นี่คือผลลัพธ์จากการแปลงเสียง (ตัวอย่าง)'
+    })
+
+    console.log(`✅ Completed job ${jobId}`)
+    
+  } catch (error) {
+    console.error('❌ Error in async processing:', error)
+    
+    // Update job ว่า failed
+    await supabase
+      .from('transcription_jobs')
+      .update({
+        status: 'FAILED',
+        error_message: error instanceof Error ? error.message : 'Unknown error'
+      })
+      .eq('id', jobId)
+  }
+}
+
 // Type-safe interfaces สำหรับ Line webhook payload
 interface LineWebhookEvent {
   type: 'message' | 'follow' | 'unfollow' | 'join' | 'leave' | 'postback' | 'beacon'
