@@ -197,6 +197,14 @@ const app = new Elysia()
         if (event.type === 'message' && event.message) {
           switch (event.message.type) {
             case 'text':
+              // --- START: เพิ่ม Logic การตอบกลับข้อความ ---
+              if (event.message.text === 'สวัสดี' && event.replyToken) {
+                await lineClient.replyMessage(event.replyToken, {
+                  type: 'text',
+                  text: 'สวัสดีครับ! มีอะไรให้ช่วยไหมครับ?'
+                });
+              }
+              // --- END: เพิ่ม Logic การตอบกลับข้อความ ---
               console.log(`💬 Text message: ${event.message.text}`)
               break
             case 'audio':
