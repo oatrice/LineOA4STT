@@ -5,6 +5,7 @@ import { createClient } from '@supabase/supabase-js'
 import { promises as fs } from 'fs'
 import * as path from 'path'
 import { Readable } from 'stream'
+import { SpeechClient } from '@google-cloud/speech'
 
 // Helper function to convert a Readable stream to a Buffer
 async function streamToBuffer(stream: Readable): Promise<Buffer> {
@@ -26,6 +27,9 @@ const supabase = createClient(
 const lineClient = new Client({
   channelAccessToken: process.env.LINE_CHANNEL_ACCESS_TOKEN || ''
 })
+
+// Google Cloud Speech-to-Text client
+const speechClient = new SpeechClient()
 
 // ฟังก์ชันสำหรับจัดการ audio messages
 async function handleAudioMessage(event: LineWebhookEvent) {

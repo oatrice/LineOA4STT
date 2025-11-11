@@ -10,6 +10,7 @@
     "typescript": "^5"
   },
   "dependencies": {
+    "@google-cloud/speech": "^7.2.1",
     "@line/bot-sdk": "^10.5.0",
     "@supabase/supabase-js": "^2.80.0",
     "elysia": "^1.4.15"
