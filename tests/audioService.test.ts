@@ -48,6 +48,32 @@ describe('AudioService', () => {
     await fs.rm(tempTestDir, { recursive: true, force: true })
     await fs.mkdir(tempTestDir, { recursive: true })
 
+    // Create a dummy audio file for testing conversion in the tempTestDir
+    const testAudioSourcePath = path.join(tempTestDir, 'test-message-id.m4a')
+    // Use ffmpeg to create a valid m4a file
+    await new Promise((resolve, reject) => {
+      const { spawn } = require('child_process');
+      const ffmpeg = spawn('ffmpeg', [
+        '-y', // Overwrite output files without asking
+        '-f', 'lavfi',
+        '-i', 'anullsrc=r=44100:cl=mono',
+        '-t', '1', // Duration 1 second
+        '-q:a', '9', // Audio quality
+        '-acodec', 'aac',
+        testAudioSourcePath
+      ]);
+      ffmpeg.on('close', (code: number) => {
+        if (code === 0) {
+          resolve(null);
+        } else {
+          reject(new Error(`ffmpeg exited with code ${code}`));
+        }
+      });
+      ffmpeg.on('error', (err: Error) => {
+        reject(err);
+      });
+    });
+
     audioService = new AudioService(
       mockLineClient as Client,
       mockSTTService as STTService
