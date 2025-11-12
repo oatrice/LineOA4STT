@@ -4,7 +4,8 @@ import { promises as fs } from 'fs'
 import * as path from 'path'
 import { promisify } from 'util'
 import { exec } from 'child_process'
-import { STTService, STTResult } from './sttService'
+import { STTService } from './sttService'
+import type { STTResult } from './sttService'
 
 const execPromise = promisify(exec)
 
