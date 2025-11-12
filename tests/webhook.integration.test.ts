@@ -472,7 +472,7 @@ describe('Webhook Integration Tests', () => {
       body,
     })
 
-    const response = await app(request)
+    const response = await app.handle(request)
     const result = await response.json()
 
     expect(response.status).toBe(200)
