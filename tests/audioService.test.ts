@@ -79,9 +79,18 @@ describe('AudioService', () => {
   })
 
   it('should process audio successfully', async () => {
+    // Create a dummy audio file for testing conversion
+    const testAudioSourcePath = path.join(process.cwd(), 'temp_audio_test', 'test-message-id.m4a')
+    const testAudioInputPath = path.join(tempTestDir, 'test-message-id.m4a')
+    await fs.copyFile(testAudioSourcePath, testAudioInputPath)
+
+    // Mock downloadAudio to return the buffer of the created file
+    const audioBuffer = await fs.readFile(testAudioSourcePath)
+    const mockDownloadAudio = mock(audioService, 'downloadAudio').mockResolvedValue(audioBuffer)
+
     const result = await audioService.processAudio('test-message-id', {
       languageCode: 'th-TH',
-      tempDir: tempTestDir, // Use the test-specific temp directory
+      tempDir: tempTestDir,
     })
 
     expect(result).toBeDefined()
@@ -101,6 +110,13 @@ describe('AudioService', () => {
 
     // To properly test cleanup, we'd need to mock fs.unlink or similar.
     // For this test, we'll just check the main processing flow.
+    
+    // Verify that the files were cleaned up
+    const convertedAudioPath = path.join(tempTestDir, 'test-message-id.wav')
+    await expect(fs.access(testAudioInputPath)).rejects.toThrow()
+    await expect(fs.access(convertedAudioPath)).rejects.toThrow()
+
+    mockDownloadAudio.mockRestore()
   })
 
   it('should cleanup audio files', async () => {
