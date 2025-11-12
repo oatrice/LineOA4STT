@@ -169,6 +169,7 @@ export function createApp(services: AppServices) {
       })
 
       // Send result to user
+      console.log(`✉️ Sending transcription result to user ${userId}`)
       await lineClient.pushMessage(userId, {
         type: 'text',
         text: `✨ เสร็จแล้วครับ!\n\nจาก: ${displayName}\nข้อความเมื่อ ${timeString}\nผลลัพธ์: ${result.transcript}`,
