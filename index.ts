@@ -111,7 +111,7 @@ async function processAudioAsync(
     // Send result to user
     await lineClient.pushMessage(userId, {
       type: 'text',
-      text: `✨ เสร็จแล้วครับ!\n\nข้อความเมื่อ ${timeString}\nจาก: ${displayName}\nผลลัพธ์: ${result.transcript}`,
+      text: `✨ เสร็จแล้วครับ!\n\nจาก: ${displayName}\nข้อความเมื่อ ${timeString}\nผลลัพธ์: ${result.transcript}`,
     })
 
     console.log(`✅ Completed job ${jobId}`)
