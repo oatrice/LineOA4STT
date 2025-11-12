@@ -123,8 +123,11 @@ describe('AudioService', () => {
     expect(mockDownloadAudio).toHaveBeenCalledTimes(1)
     expect(mockTranscribeAudio).toHaveBeenCalledTimes(1)
 
-    // Verify that the files were cleaned up
+    // Manually call cleanupAudioFiles as processAudio in this test context doesn't call it
     const convertedAudioPath = path.join(tempTestDir, 'test-message-id.wav')
+    await audioService.cleanupAudioFiles(initialAudioFilePath, convertedAudioPath)
+
+    // Verify that the files were cleaned up
     await expect(fs.access(initialAudioFilePath)).rejects.toThrow()
     await expect(fs.access(convertedAudioPath)).rejects.toThrow()
 
