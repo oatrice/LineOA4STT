@@ -106,23 +106,11 @@ export class AudioService {
         audioFilePath,
         convertedAudioPath,
       }
-    } catch (error) {
-      // Cleanup on error
-      if (audioFilePath) {
-        try {
-          await fs.unlink(audioFilePath)
-        } catch (cleanupError) {
-          // Ignore cleanup errors
-        }
+    } finally {
+      // Ensure cleanup happens regardless of success or failure
+      if (audioFilePath && convertedAudioPath) {
+        await this.cleanupAudioFiles(audioFilePath, convertedAudioPath)
       }
-      if (convertedAudioPath) {
-        try {
-          await fs.unlink(convertedAudioPath)
-        } catch (cleanupError) {
-          // Ignore cleanup errors
-        }
-      }
-      throw error
     }
   }
 
@@ -147,4 +135,3 @@ export class AudioService {
     }
   }
 }
-
