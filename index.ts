@@ -73,7 +73,7 @@ async function handleAudioMessage(event: LineWebhookEvent) {
     })
 
     // 3. เริ่มการประมวลผลแบบ async (ไม่ block webhook response)
-    processAudioAsync(event.message.id, job.id, event.replyToken)
+    processAudioAsync(event.message.id, job.id, event.source.userId, event.timestamp)
 
   } catch (error) {
     console.error('❌ Error handling audio message:', error)
@@ -81,7 +81,7 @@ async function handleAudioMessage(event: LineWebhookEvent) {
 }
 
 // ฟังก์ชันสำหรับประมวลผลเสียงแบบ async
-async function processAudioAsync(messageId: string, jobId: string, replyToken: string) {
+async function processAudioAsync(messageId: string, jobId: string, userId: string, timestamp: number) {
   let audioFilePath: string | undefined
   let convertedAudioPath: string | undefined
   try {
@@ -160,9 +160,25 @@ async function processAudioAsync(messageId: string, jobId: string, replyToken: s
       .eq('id', jobId)
 
     // ส่งผลลัพธ์กลับไปให้ user
-    await lineClient.replyMessage(replyToken, {
+    let displayName = 'ผู้ใช้' // Default name in case of error
+    try {
+      const userProfile = await lineClient.getProfile(userId)
+      displayName = userProfile.displayName
+    } catch (error) {
+      console.error(`Failed to get profile for user ${userId}:`, error)
+    }
+
+    const messageTime = new Date(timestamp)
+    const timeString = messageTime.toLocaleTimeString('th-TH', {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+      timeZone: 'Asia/Bangkok',
+    })
+
+    await lineClient.pushMessage(userId, {
       type: 'text',
-      text: `✨ เสร็จแล้วครับ!\n\nผลลัพธ์: ${transcription}`
+      text: `✨ เสร็จแล้วครับ!\n\nข้อความเมื่อ ${timeString}\nจาก: ${displayName}\nผลลัพธ์: ${transcription}`,
     })
 
     console.log(`✅ Completed job ${jobId}`)
