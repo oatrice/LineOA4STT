@@ -2,6 +2,10 @@
 FROM oven/bun:1 AS base
 WORKDIR /app
 
+# Install ffmpeg
+# The base image (oven/bun:1) is based on Debian, so we use apt-get
+RUN apt-get update && apt-get install -y ffmpeg && rm -rf /var/lib/apt/lists/*
+
 # Install dependencies
 FROM base AS install
 COPY package.json bun.lock ./
@@ -17,4 +21,3 @@ EXPOSE 3000
 
 # Run the application
 CMD ["bun", "server.ts"]
-

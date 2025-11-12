@@ -34,15 +34,14 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
 
-      # Deploy to Render.com (example)
-      # Uncomment and configure based on your deployment target
-      # - name: Deploy to Render
-      #   uses: johnbeynon/render-deploy-action@v0.0.8
-      #   with:
-      #     service-id: ${{ secrets.RENDER_SERVICE_ID }}
-      #     api-key: ${{ secrets.RENDER_API_KEY }}
+      # Deploy to Render.com
+      - name: Deploy to Render
+        uses: johnbeynon/render-deploy-action@v0.0.8
+        with:
+          service-id: ${{ secrets.RENDER_SERVICE_ID }}
+          api-key: ${{ secrets.RENDER_API_KEY }}
 
-      # Alternative: Deploy to Fly.io
+      # Alternative: Deploy to Fly.io (commented out)
       # - name: Setup Fly.io
       #   uses: superfly/flyctl-actions/setup-flyctl@master
       # - name: Deploy to Fly.io
@@ -50,10 +49,9 @@ jobs:
       #   env:
       #     FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
 
-      # Alternative: Deploy to Railway
+      # Alternative: Deploy to Railway (commented out)
       # - name: Deploy to Railway
       #   uses: bervProject/railway-deploy@main
       #   with:
       #     railway_token: ${{ secrets.RAILWAY_TOKEN }}
       #     service: ${{ secrets.RAILWAY_SERVICE }}
-
