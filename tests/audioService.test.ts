@@ -105,13 +105,11 @@ describe('AudioService', () => {
   })
 
   it('should process audio successfully', async () => {
-    // Create a dummy audio file for testing conversion
-    const testAudioSourcePath = path.join(process.cwd(), 'temp_audio_test', 'test-message-id.m4a')
-    const testAudioInputPath = path.join(tempTestDir, 'test-message-id.m4a')
-    await fs.copyFile(testAudioSourcePath, testAudioInputPath)
+    // The dummy audio file is already created in beforeEach at tempTestDir/test-message-id.m4a
+    const initialAudioFilePath = path.join(tempTestDir, 'test-message-id.m4a')
+    const audioBuffer = await fs.readFile(initialAudioFilePath)
 
     // Mock downloadAudio to return the buffer of the created file
-    const audioBuffer = await fs.readFile(testAudioSourcePath)
     const mockDownloadAudio = vi.spyOn(audioService, 'downloadAudio').mockResolvedValue(audioBuffer)
 
     const result = await audioService.processAudio('test-message-id', {
@@ -127,7 +125,7 @@ describe('AudioService', () => {
 
     // Verify that the files were cleaned up
     const convertedAudioPath = path.join(tempTestDir, 'test-message-id.wav')
-    await expect(fs.access(testAudioInputPath)).rejects.toThrow()
+    await expect(fs.access(initialAudioFilePath)).rejects.toThrow()
     await expect(fs.access(convertedAudioPath)).rejects.toThrow()
 
     mockDownloadAudio.mockRestore()
