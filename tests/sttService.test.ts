@@ -3,35 +3,37 @@ import { STTService } from '../src/services/sttService'
 import { SpeechClient } from '@google-cloud/speech'
 import { promises as fs } from 'fs'
 
-// Mock Google Cloud Speech Client
-const mockRecognize = mock(async () => [
-  {
-    results: [
-      {
-        alternatives: [
-          {
-            transcript: 'Test transcript',
-            confidence: 0.95,
-          },
-        ],
-      },
-    ],
-  },
-])
-
-mock.module('@google-cloud/speech', () => ({
-  SpeechClient: mock(() => ({
-    recognize: mockRecognize,
-  })),
-}))
+// Declare mock functions globally
+let mockRecognize: ReturnType<typeof mock>
+let mockSpeechClientInstance: Partial<SpeechClient>
 
 describe('STTService', () => {
   let sttService: STTService
 
   beforeEach(() => {
+    // Initialize mock functions and client
+    mockRecognize = mock(async () => [
+      {
+        results: [
+          {
+            alternatives: [
+              {
+                transcript: 'Test transcript',
+                confidence: 0.95,
+              },
+            ],
+          },
+        ],
+      },
+    ])
+
+    mockSpeechClientInstance = {
+      recognize: mockRecognize,
+    } as Partial<SpeechClient>
+
     // Clear mock history before each test
     mockRecognize.mockClear()
-    sttService = new STTService()
+    sttService = new STTService(mockSpeechClientInstance as SpeechClient)
   })
 
   afterEach(() => {
