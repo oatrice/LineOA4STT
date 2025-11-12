@@ -122,6 +122,9 @@ export function createApp(services: AppServices) {
     userId: string,
     timestamp: number
   ) {
+    let result: AudioProcessingResult | undefined
+    let processingError: Error | undefined
+
     try {
       console.log(`🔄 Processing audio ${messageId} for job ${jobId}`)
 
@@ -129,7 +132,7 @@ export function createApp(services: AppServices) {
       await jobService.updateJob(jobId, { status: 'PROCESSING' })
 
       // Process audio using AudioService
-      const result = await audioService.processAudio(messageId, {
+      result = await audioService.processAudio(messageId, {
         languageCode: 'th-TH',
       })
 
@@ -173,6 +176,7 @@ export function createApp(services: AppServices) {
       console.log(`✅ Completed job ${jobId}`)
     } catch (error) {
       console.error('❌ Error in async processing:', error)
+      processingError = error instanceof Error ? error : new Error(String(error))
     } finally {
       // Ensure cleanup happens regardless of success or failure in async processing
       if (result && result.audioFilePath && result.convertedAudioPath) {
@@ -182,12 +186,13 @@ export function createApp(services: AppServices) {
         )
       }
 
-      // Update job status to FAILED
-      await jobService.updateJob(jobId, {
-        status: 'FAILED',
-        error_message:
-          error instanceof Error ? error.message : 'Unknown error',
-      })
+      // Update job status to FAILED if an error occurred
+      if (processingError) {
+        await jobService.updateJob(jobId, {
+          status: 'FAILED',
+          error_message: processingError.message,
+        })
+      }
     }
   }
 
