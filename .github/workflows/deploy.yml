@@ -26,6 +26,13 @@ jobs:
       - name: Install dependencies
         run: bun install
 
+      - name: Setup Google Cloud Credentials
+        run: |
+          echo "${{ secrets.GOOGLE_CREDENTIALS_JSON }}" > google-credentials.json
+          echo "GOOGLE_APPLICATION_CREDENTIALS=./google-credentials.json" >> $GITHUB_ENV
+        env:
+          GOOGLE_CREDENTIALS_JSON: ${{ secrets.GOOGLE_CREDENTIALS_JSON }}
+
       - name: Type check
         run: bun run type-check
 
