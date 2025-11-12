@@ -1,11 +1,15 @@
 import { Elysia } from 'elysia'
-import { Client, middleware } from '@line/bot-sdk'
+import { Client, middleware, validateSignature } from '@line/bot-sdk'
 import { createHash } from 'crypto'
 import { createClient } from '@supabase/supabase-js'
 import { promises as fs } from 'fs'
 import * as path from 'path'
 import { Readable } from 'stream'
 import { SpeechClient, protos } from '@google-cloud/speech'
+import { promisify } from 'util'
+import { exec } from 'child_process'
+
+const execPromise = promisify(exec)
 
 const AudioEncoding = protos.google.cloud.speech.v1.RecognitionConfig.AudioEncoding
 
@@ -79,6 +83,7 @@ async function handleAudioMessage(event: LineWebhookEvent) {
 // ฟังก์ชันสำหรับประมวลผลเสียงแบบ async
 async function processAudioAsync(messageId: string, jobId: string, replyToken: string) {
   let audioFilePath: string | undefined
+  let convertedAudioPath: string | undefined
   try {
     console.log(`🔄 Processing audio ${messageId} for job ${jobId}`)
 
@@ -96,14 +101,35 @@ async function processAudioAsync(messageId: string, jobId: string, replyToken: s
 
     console.log(`✅ Audio file downloaded to: ${audioFilePath}`)
 
-    // 3. ส่งไฟล์เสียงไปที่ Google Cloud Speech-to-Text API
+    // 2. Convert audio to WAV using ffmpeg
+    convertedAudioPath = path.join(tempDir, `${messageId}.wav`)
+    try {
+      console.log(`🔧 Converting ${audioFilePath} to ${convertedAudioPath}...`)
+      await execPromise(`ffmpeg -y -i "${audioFilePath}" -acodec pcm_s16le -ar 16000 -ac 1 "${convertedAudioPath}"`)
+      console.log(`✅ Audio converted successfully.`)
+    } catch (ffmpegError) {
+      console.error('❌ FFmpeg conversion failed:', ffmpegError)
+      await supabase
+        .from('transcription_jobs')
+        .update({
+          status: 'FAILED',
+          error_message: 'FFmpeg conversion failed: ' + (ffmpegError instanceof Error ? ffmpegError.message : 'Unknown error'),
+        })
+        .eq('id', jobId)
+      return
+    }
+
+    // 3. Read the converted audio file
+    const convertedAudioBuffer = await fs.readFile(convertedAudioPath)
+
+    // 4. ส่งไฟล์เสียงไปที่ Google Cloud Speech-to-Text API
     const audio = {
-      content: audioBuffer.toString('base64'),
+      content: convertedAudioBuffer.toString('base64'),
     }
     const config = {
       encoding: AudioEncoding.LINEAR16,
-      sampleRateHertz: 16000, // Line audio มักจะเป็น 16kHz
-      languageCode: 'th-TH', // ภาษาไทย
+      sampleRateHertz: 16000,
+      languageCode: 'th-TH',
     }
     const request = {
       audio: audio,
@@ -120,11 +146,11 @@ async function processAudioAsync(messageId: string, jobId: string, replyToken: s
     console.log(`📝 Transcription Result: ${transcription}`)
     console.log(`📊 Confidence: ${confidence}`)
 
-    // 4. อัปเดต job record ด้วยผลลัพธ์ STT
+    // 5. อัปเดต job record ด้วยผลลัพธ์ STT
     await supabase
       .from('transcription_jobs')
       .update({
-        audio_file_path: audioFilePath,
+        audio_file_path: audioFilePath, // or convertedAudioPath? Let's stick with original for now.
         status: 'COMPLETED',
         transcript: transcription,
         confidence: confidence,
@@ -153,13 +179,21 @@ async function processAudioAsync(messageId: string, jobId: string, replyToken: s
       })
       .eq('id', jobId)
   } finally {
-    // ลบไฟล์เสียงชั่วคราวหลังจากประมวลผลเสร็จ (หรือย้ายไปเก็บถาวร)
+    // ลบไฟล์เสียงชั่วคราวหลังจากประมวลผลเสร็จ
     if (audioFilePath) {
       try {
         await fs.unlink(audioFilePath)
         console.log(`🗑️ Deleted temporary audio file: ${audioFilePath}`)
       } catch (cleanupError) {
         console.error('❌ Error deleting temporary audio file:', cleanupError)
+      }
+    }
+    if (convertedAudioPath) {
+      try {
+        await fs.unlink(convertedAudioPath)
+        console.log(`🗑️ Deleted temporary converted file: ${convertedAudioPath}`)
+      } catch (cleanupError) {
+        console.error('❌ Error deleting temporary converted file:', cleanupError)
       }
     }
   }
