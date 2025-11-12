@@ -108,9 +108,9 @@ export class AudioService {
       }
     } finally {
       // Ensure cleanup happens regardless of success or failure
-      if (audioFilePath && convertedAudioPath) {
-        await this.cleanupAudioFiles(audioFilePath, convertedAudioPath)
-      }
+      // The cleanup is now handled by the caller (index.ts) to avoid premature deletion
+      // if the file paths are passed to another service for further processing.
+      // This also allows for more robust error handling in the main application logic.
     }
   }
 
@@ -121,17 +121,27 @@ export class AudioService {
     try {
       if (audioFilePath) {
         await fs.unlink(audioFilePath)
+        console.log(`🗑️ Deleted temporary audio file: ${audioFilePath}`)
       }
     } catch (error) {
-      console.error('Error deleting temporary audio file:', error)
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+        console.warn(`⚠️ Temporary audio file not found, skipping deletion: ${audioFilePath}`)
+      } else {
+        console.error('❌ Error deleting temporary audio file:', error)
+      }
     }
 
     try {
       if (convertedAudioPath) {
         await fs.unlink(convertedAudioPath)
+        console.log(`🗑️ Deleted temporary converted file: ${convertedAudioPath}`)
       }
     } catch (error) {
-      console.error('Error deleting temporary converted file:', error)
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+        console.warn(`⚠️ Temporary converted file not found, skipping deletion: ${convertedAudioPath}`)
+      } else {
+        console.error('❌ Error deleting temporary converted file:', error)
+      }
     }
   }
 }
