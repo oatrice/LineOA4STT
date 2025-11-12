@@ -17,8 +17,8 @@ export interface STTConfig {
 export class STTService {
   private speechClient: SpeechClient
 
-  constructor() {
-    this.speechClient = new SpeechClient()
+  constructor(speechClient?: SpeechClient) {
+    this.speechClient = speechClient || new SpeechClient()
   }
 
   async transcribeAudio(
@@ -93,4 +93,3 @@ export class STTService {
     }
   }
 }
-

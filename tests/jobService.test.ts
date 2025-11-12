@@ -11,6 +11,7 @@ describe('JobService', () => {
   let mockSupabase: Partial<SupabaseClient>
 
   beforeEach(() => {
+    // Re-initialize mockSupabase and jobService for each test
     const mockInsert = {
       select: mock(() => ({
         single: mock(async () => ({
@@ -110,4 +111,3 @@ describe('JobService', () => {
     expect(job).toBeNull()
   })
 })
-
