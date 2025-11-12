@@ -3,37 +3,61 @@ import { AudioService } from '../src/services/audioService'
 import { STTService } from '../src/services/sttService'
 import type { Client } from '@line/bot-sdk'
 import { Readable } from 'stream'
+import { promises as fs } from 'fs'
+import * as path from 'path'
 
-afterEach(() => {
-  vi.restoreAllMocks()
-})
+// Declare mock functions globally
+let mockGetMessageContent: ReturnType<typeof mock>
+let mockTranscribeAudio: ReturnType<typeof mock>
+
+// Mock instances
+let mockLineClient: Partial<Client>
+let mockSTTService: Partial<STTService>
+let audioService: AudioService
 
 describe('AudioService', () => {
-  let audioService: AudioService
-  let mockLineClient: Partial<Client>
-  let mockSTTService: Partial<STTService>
+  const tempTestDir = path.join(process.cwd(), 'temp_audio_test')
 
-  beforeEach(() => {
-    mockSTTService = {
-      transcribeAudio: mock(async () => ({
-        transcript: 'Test transcript',
-        confidence: 0.95,
-      })),
-    }
+  beforeEach(async () => {
+    // Initialize mock functions
+    mockGetMessageContent = mock(async () => {
+      const stream = new Readable()
+      stream.push(Buffer.from('fake audio data'))
+      stream.push(null) // End stream
+      return stream as any
+    })
+
+    mockTranscribeAudio = mock(async () => ({
+      transcript: 'Test transcript',
+      confidence: 0.95,
+    }))
 
     mockLineClient = {
-      getMessageContent: mock(async () => {
-        const stream = new Readable()
-        stream.push(Buffer.from('fake audio data'))
-        stream.push(null) // End stream
-        return stream as any
-      }),
+      getMessageContent: mockGetMessageContent,
     }
+
+    mockSTTService = {
+      transcribeAudio: mockTranscribeAudio,
+    }
+
+    // Clear mock history before each test
+    mockGetMessageContent.mockClear()
+    mockTranscribeAudio.mockClear()
+
+    // Ensure temp test directory is clean
+    await fs.rm(tempTestDir, { recursive: true, force: true })
+    await fs.mkdir(tempTestDir, { recursive: true })
 
     audioService = new AudioService(
       mockLineClient as Client,
       mockSTTService as STTService
     )
+  })
+
+  afterEach(async () => {
+    vi.restoreAllMocks()
+    // Clean up temp test directory after each test
+    await fs.rm(tempTestDir, { recursive: true, force: true })
   })
 
   it('should download audio from Line', async () => {
@@ -50,7 +74,45 @@ describe('AudioService', () => {
     const filePath = await audioService.saveAudioFile('test-message-id', buffer)
 
     expect(filePath).toContain('test-message-id.m4a')
-    expect(filePath).toContain('temp_audio')
+    expect(filePath).toContain('temp_audio') // This will still be 'temp_audio' from the service's constructor
+    // To test with tempTestDir, AudioService constructor would need to accept tempDir
+  })
+
+  it('should process audio successfully', async () => {
+    const result = await audioService.processAudio('test-message-id', {
+      languageCode: 'th-TH',
+      tempDir: tempTestDir, // Use the test-specific temp directory
+    })
+
+    expect(result).toBeDefined()
+    expect(result.transcript).toBe('Test transcript')
+    expect(result.confidence).toBe(0.95)
+    expect(mockGetMessageContent).toHaveBeenCalledTimes(1)
+    expect(mockTranscribeAudio).toHaveBeenCalledTimes(1)
+
+    // Verify files were created and then cleaned up
+    const audioFilePath = path.join(tempTestDir, 'test-message-id.m4a')
+    const convertedAudioPath = path.join(tempTestDir, 'test-message-id.wav')
+
+    // After processAudio, files should be cleaned up by cleanupAudioFiles
+    // For this test, we need to mock cleanupAudioFiles to prevent actual deletion
+    // Or, we can check for existence before cleanup and then after
+    // For now, let's assume cleanup is handled by the service and focus on processAudio logic
+
+    // To properly test cleanup, we'd need to mock fs.unlink or similar.
+    // For this test, we'll just check the main processing flow.
+  })
+
+  it('should cleanup audio files', async () => {
+    const audioFilePath = path.join(tempTestDir, 'test-message-id.m4a')
+    const convertedAudioPath = path.join(tempTestDir, 'test-message-id.wav')
+
+    await fs.writeFile(audioFilePath, Buffer.from('test'))
+    await fs.writeFile(convertedAudioPath, Buffer.from('test'))
+
+    await audioService.cleanupAudioFiles(audioFilePath, convertedAudioPath)
+
+    await expect(fs.access(audioFilePath)).rejects.toThrow()
+    await expect(fs.access(convertedAudioPath)).rejects.toThrow()
   })
 })
-
