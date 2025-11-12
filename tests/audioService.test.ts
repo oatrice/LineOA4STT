@@ -1,8 +1,12 @@
-import { describe, it, expect, beforeEach, mock } from 'bun:test'
+import { describe, it, expect, beforeEach, mock, afterEach, vi } from 'bun:test'
 import { AudioService } from '../src/services/audioService'
 import { STTService } from '../src/services/sttService'
 import type { Client } from '@line/bot-sdk'
 import { Readable } from 'stream'
+
+afterEach(() => {
+  vi.restoreAllMocks()
+})
 
 describe('AudioService', () => {
   let audioService: AudioService

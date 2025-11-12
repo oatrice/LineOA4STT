@@ -1,7 +1,11 @@
-import { describe, it, expect, beforeEach, mock } from 'bun:test'
+import { describe, it, expect, beforeEach, mock, afterEach, vi } from 'bun:test'
 import { createHmac } from 'crypto'
 
 const LINE_CHANNEL_SECRET = 'test-channel-secret'
+
+afterEach(() => {
+  vi.restoreAllMocks()
+})
 
 // Mock LINE Bot SDK Client
 const mockReplyMessage = mock(() => Promise.resolve({}))

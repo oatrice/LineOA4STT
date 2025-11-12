@@ -1,6 +1,10 @@
-import { describe, it, expect, beforeEach, mock } from 'bun:test'
+import { describe, it, expect, beforeEach, mock, afterEach, vi } from 'bun:test'
 import { JobService } from '../src/services/jobService'
 import type { SupabaseClient } from '@supabase/supabase-js'
+
+afterEach(() => {
+  vi.restoreAllMocks()
+})
 
 describe('JobService', () => {
   let jobService: JobService

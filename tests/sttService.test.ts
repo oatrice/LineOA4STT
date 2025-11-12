@@ -1,25 +1,27 @@
-import { describe, it, expect, beforeEach, mock } from 'bun:test'
+import { describe, it, expect, beforeEach, mock, afterEach, vi } from 'bun:test'
 import { STTService } from '../src/services/sttService'
 import { SpeechClient } from '@google-cloud/speech'
 import { promises as fs } from 'fs'
 
 // Mock Google Cloud Speech Client
-mock.module('@google-cloud/speech', () => ({
-  SpeechClient: mock(() => ({
-    recognize: mock(async () => [
+const mockRecognize = mock(async () => [
+  {
+    results: [
       {
-        results: [
+        alternatives: [
           {
-            alternatives: [
-              {
-                transcript: 'Test transcript',
-                confidence: 0.95,
-              },
-            ],
+            transcript: 'Test transcript',
+            confidence: 0.95,
           },
         ],
       },
-    ]),
+    ],
+  },
+])
+
+mock.module('@google-cloud/speech', () => ({
+  SpeechClient: mock(() => ({
+    recognize: mockRecognize,
   })),
 }))
 
@@ -27,7 +29,13 @@ describe('STTService', () => {
   let sttService: STTService
 
   beforeEach(() => {
+    // Clear mock history before each test
+    mockRecognize.mockClear()
     sttService = new STTService()
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
   })
 
   it('should transcribe audio file', async () => {
@@ -65,4 +73,3 @@ describe('STTService', () => {
     expect(result.confidence).toBe(0.95)
   })
 })
-
