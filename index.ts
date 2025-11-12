@@ -171,14 +171,16 @@ export function createApp(services: AppServices) {
       })
 
       console.log(`✅ Completed job ${jobId}`)
-
-      // Cleanup temporary files
-      await audioService.cleanupAudioFiles(
-        result.audioFilePath,
-        result.convertedAudioPath
-      )
     } catch (error) {
       console.error('❌ Error in async processing:', error)
+    } finally {
+      // Ensure cleanup happens regardless of success or failure in async processing
+      if (result && result.audioFilePath && result.convertedAudioPath) {
+        await audioService.cleanupAudioFiles(
+          result.audioFilePath,
+          result.convertedAudioPath
+        )
+      }
 
       // Update job status to FAILED
       await jobService.updateJob(jobId, {
