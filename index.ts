@@ -8,6 +8,7 @@ import { AudioService } from './src/services/audioService'
 
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Client as LineClientType } from '@line/bot-sdk'
+import type { AudioProcessingResult } from './src/services/audioService'
 
 // TypeBox schemas สำหรับ Line webhook payload validation
 const LineWebhookSourceSchema = t.Object({
