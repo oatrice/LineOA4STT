@@ -86,7 +86,7 @@ describe('AudioService', () => {
 
     // Mock downloadAudio to return the buffer of the created file
     const audioBuffer = await fs.readFile(testAudioSourcePath)
-    const mockDownloadAudio = mock(audioService, 'downloadAudio').mockResolvedValue(audioBuffer)
+    const mockDownloadAudio = vi.spyOn(audioService, 'downloadAudio').mockResolvedValue(audioBuffer)
 
     const result = await audioService.processAudio('test-message-id', {
       languageCode: 'th-TH',
@@ -96,21 +96,9 @@ describe('AudioService', () => {
     expect(result).toBeDefined()
     expect(result.transcript).toBe('Test transcript')
     expect(result.confidence).toBe(0.95)
-    expect(mockGetMessageContent).toHaveBeenCalledTimes(1)
+    expect(mockDownloadAudio).toHaveBeenCalledTimes(1)
     expect(mockTranscribeAudio).toHaveBeenCalledTimes(1)
 
-    // Verify files were created and then cleaned up
-    const audioFilePath = path.join(tempTestDir, 'test-message-id.m4a')
-    const convertedAudioPath = path.join(tempTestDir, 'test-message-id.wav')
-
-    // After processAudio, files should be cleaned up by cleanupAudioFiles
-    // For this test, we need to mock cleanupAudioFiles to prevent actual deletion
-    // Or, we can check for existence before cleanup and then after
-    // For now, let's assume cleanup is handled by the service and focus on processAudio logic
-
-    // To properly test cleanup, we'd need to mock fs.unlink or similar.
-    // For this test, we'll just check the main processing flow.
-    
     // Verify that the files were cleaned up
     const convertedAudioPath = path.join(tempTestDir, 'test-message-id.wav')
     await expect(fs.access(testAudioInputPath)).rejects.toThrow()
