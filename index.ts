@@ -194,41 +194,45 @@ type LineWebhookPayload = typeof LineWebhookPayloadSchema.static
 // Environment variables (ควรใช้ .env ใน production)
 const LINE_CHANNEL_SECRET = process.env.LINE_CHANNEL_SECRET || 'your-line-channel-secret'
 
-// Custom Plugin สำหรับ Line Signature Validation
-const lineSignatureValidation = new Elysia({ name: 'line-signature' })
-  .onParse(async ({ request, set }) => {
-    const signature = request.headers.get('x-line-signature')
-    
-    if (!signature) {
-      console.error('⚠️ Missing x-line-signature header')
-      set.status = 401
-      return { status: 'error', message: 'Unauthorized: Missing signature' }
-    }
-
-    const rawBody = await request.text()
-    
-    // Line uses HMAC-SHA256 with channel secret
-    const hash = createHmac('sha256', LINE_CHANNEL_SECRET)
-      .update(rawBody)
-      .digest('base64')
-    
-    const expectedSignature = hash
-    
-    if (signature !== expectedSignature) {
-      console.error('⚠️ Invalid Line signature detected')
-      set.status = 401
-      return { status: 'error', message: 'Unauthorized: Invalid signature' }
-    }
-    
-    console.log('✅ Valid Line signature')
-    
-    // Return parsed JSON body for Elysia to use
-    return JSON.parse(rawBody)
-  })
-
 // สร้าง Elysia App พร้อม Type-safe configuration
 const app = new Elysia()
-  .use(lineSignatureValidation)
+  .onRequest(async ({ request, set }) => {
+    // Validate LINE signature for POST /webhook before body parsing
+    if (request.method === 'POST' && new URL(request.url).pathname === '/webhook') {
+      const signature = request.headers.get('x-line-signature')
+      
+      if (!signature) {
+        console.error('⚠️ Missing x-line-signature header')
+        set.status = 401
+        set.headers['Content-Type'] = 'application/json'
+        return Response.json(
+          { status: 'error', message: 'Unauthorized: Missing signature' },
+          { status: 401 }
+        )
+      }
+
+      // Clone request to read body without consuming it
+      const clonedRequest = request.clone()
+      const rawBody = await clonedRequest.text()
+      
+      // Line uses HMAC-SHA256 with channel secret
+      const hash = createHmac('sha256', LINE_CHANNEL_SECRET)
+        .update(rawBody)
+        .digest('base64')
+      
+      if (signature !== hash) {
+        console.error('⚠️ Invalid Line signature detected')
+        set.status = 401
+        set.headers['Content-Type'] = 'application/json'
+        return Response.json(
+          { status: 'error', message: 'Unauthorized: Invalid signature' },
+          { status: 401 }
+        )
+      }
+      
+      console.log('✅ Valid Line signature')
+    }
+  })
   .get('/', () => 'Line OA STT Bot is running!')
   .post(
     '/webhook',
@@ -248,10 +252,15 @@ const app = new Elysia()
             case 'text':
               // --- START: เพิ่ม Logic การตอบกลับข้อความ ---
               if (event.message.text === 'สวัสดี' && event.replyToken) {
-                await lineClient.replyMessage(event.replyToken, {
-                  type: 'text',
-                  text: 'สวัสดีครับ! มีอะไรให้ช่วยไหมครับ?'
-                });
+                try {
+                  await lineClient.replyMessage(event.replyToken, {
+                    type: 'text',
+                    text: 'สวัสดีครับ! มีอะไรให้ช่วยไหมครับ?'
+                  });
+                } catch (error) {
+                  console.error('❌ Error replying to message:', error)
+                  // Continue processing even if LINE API fails (e.g., in test environment)
+                }
               }
               // --- END: เพิ่ม Logic การตอบกลับข้อความ ---
               console.log(`💬 Text message: ${event.message.text}`)
