@@ -252,15 +252,10 @@ const app = new Elysia()
             case 'text':
               // --- START: เพิ่ม Logic การตอบกลับข้อความ ---
               if (event.message.text === 'สวัสดี' && event.replyToken) {
-                try {
-                  await lineClient.replyMessage(event.replyToken, {
-                    type: 'text',
-                    text: 'สวัสดีครับ! มีอะไรให้ช่วยไหมครับ?'
-                  });
-                } catch (error) {
-                  console.error('❌ Error replying to message:', error)
-                  // Continue processing even if LINE API fails (e.g., in test environment)
-                }
+                await lineClient.replyMessage(event.replyToken, {
+                  type: 'text',
+                  text: 'สวัสดีครับ! มีอะไรให้ช่วยไหมครับ?'
+                });
               }
               // --- END: เพิ่ม Logic การตอบกลับข้อความ ---
               console.log(`💬 Text message: ${event.message.text}`)
