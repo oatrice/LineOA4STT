@@ -98,6 +98,7 @@ export function createApp(services: AppServices) {
     errorMessage: string
   ) {
     try {
+      console.log('😢 Trying to send error message to user...');
       const errorText = `ขออภัยครับ เกิดข้อผิดพลาดในการประมวลผล: ${errorMessage} 🙏`;
       
       // ถ้ามี replyToken ให้ใช้ replyMessage
