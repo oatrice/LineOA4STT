@@ -89,11 +89,60 @@ export function createApp(services: AppServices) {
 
   console.log('Current NODE_ENV:', process.env.NODE_ENV); // Keep using process.env for NODE_ENV as it's a global concept
 
+  // ฟังก์ชันสำหรับส่งข้อความแจ้งข้อผิดพลาด
+  async function sendErrorMessage(
+    replyToken: string | undefined, 
+    userId: string | undefined,
+    groupId: string | undefined,
+    roomId: string | undefined,
+    errorMessage: string
+  ) {
+    try {
+      const errorText = `ขออภัยครับ เกิดข้อผิดพลาดในการประมวลผล: ${errorMessage} 🙏`;
+      
+      // ถ้ามี replyToken ให้ใช้ replyMessage
+      if (replyToken) {
+        await lineClient.replyMessage(replyToken, {
+          type: 'text',
+          text: errorText,
+        });
+        return;
+      }
+      
+      // ถ้าไม่มี replyToken แต่มี userId, groupId หรือ roomId ให้ใช้ pushMessage
+      let to: string | undefined;
+      if (groupId) {
+        to = groupId;
+      } else if (roomId) {
+        to = roomId;
+      } else if (userId) {
+        to = userId;
+      }
+      
+      if (to) {
+        await lineClient.pushMessage(to, {
+          type: 'text',
+          text: errorText,
+        });
+      }
+    } catch (error) {
+      console.error('❌ Failed to send error message:', error);
+    }
+  }
+
   // ฟังก์ชันสำหรับจัดการ audio messages
   async function handleAudioMessage(event: LineWebhookEvent) {
     try {
       if (!event.message || !event.replyToken || !event.source.userId && !event.source.groupId && !event.source.roomId) {
         console.error('❌ Missing required fields for audio processing')
+        // ส่งข้อความแจ้งข้อผิดพลาด
+        await sendErrorMessage(
+          event.replyToken,
+          event.source.userId,
+          event.source.groupId,
+          event.source.roomId,
+          'ไม่สามารถดำเนินการได้เนื่องจากข้อมูลไม่ครบถ้วน'
+        )
         return
       }
 
@@ -125,9 +174,25 @@ export function createApp(services: AppServices) {
         event.timestamp
       ).catch(error => {
         console.error('❌ Uncaught error in processAudioAsync:', error)
+        // ส่งข้อความแจ้งข้อผิดพลาดเมื่อเกิดข้อผิดพลาดใน processAudioAsync
+        sendErrorMessage(
+          event.replyToken,
+          event.source.userId,
+          event.source.groupId,
+          event.source.roomId,
+          'เกิดข้อผิดพลาดในระหว่างการประมวลผลเสียง กรุณาลองใหม่อีกครั้ง'
+        )
       })
     } catch (error) {
       console.error('❌ Error handling audio message:', error)
+      // ส่งข้อความแจ้งข้อผิดพลาดเมื่อเกิดข้อผิดพลาดใน handleAudioMessage
+      await sendErrorMessage(
+        event.replyToken,
+        event.source.userId,
+        event.source.groupId,
+        event.source.roomId,
+        'เกิดข้อผิดพลาดในการดำเนินการ กรุณาลองใหม่อีกครั้ง'
+      )
     }
   }
 
@@ -140,12 +205,26 @@ export function createApp(services: AppServices) {
   ) {
     let result: AudioProcessingResult | undefined
     let processingError: Error | undefined
+    let replyToken: string | undefined
+    let groupId: string | undefined
+    let roomId: string | undefined
 
     try {
       console.log(`🔄 Processing audio ${messageId} for job ${jobId}`)
 
       // Update job status to PROCESSING
       await jobService.updateJob(jobId, { status: 'PROCESSING' })
+
+      // Retrieve the job to get the replyToken and source IDs for error handling
+      const job = await jobService.getJob(jobId)
+      if (!job) {
+        console.error(`❌ Job ${jobId} not found.`)
+        return
+      }
+      
+      replyToken = job.reply_token
+      groupId = job.group_id
+      roomId = job.room_id
 
       // Process audio using AudioService
       result = await audioService.processAudio(messageId, {
@@ -185,13 +264,6 @@ export function createApp(services: AppServices) {
         timeZone: 'Asia/Bangkok',
       })
 
-      // Retrieve the job to get the replyToken and source IDs
-      const job = await jobService.getJob(jobId)
-      if (!job) {
-        console.error(`❌ Job ${jobId} not found. Cannot send reply.`)
-        return
-      }
-
       let to: string | undefined
       if (job.group_id) {
         to = job.group_id
@@ -217,6 +289,15 @@ export function createApp(services: AppServices) {
     } catch (error) {
       console.error('❌ Error in async processing:', error)
       processingError = error instanceof Error ? error : new Error(String(error))
+      
+      // ส่งข้อความแจ้งข้อผิดพลาดเมื่อเกิดข้อผิดพลาดใน processAudioAsync
+      await sendErrorMessage(
+        replyToken,
+        userId,
+        groupId,
+        roomId,
+        'ไม่สามารถแปลงเสียงเป็นข้อความได้ กรุณาลองใหม่อีกครั้ง'
+      )
     } finally {
       // Ensure cleanup happens regardless of success or failure in async processing
       if (result && result.audioFilePath && result.convertedAudioPath) {
@@ -293,29 +374,58 @@ export function createApp(services: AppServices) {
             switch (event.message.type) {
               case 'text':
                 // --- START: เพิ่ม Logic การตอบกลับข้อความ ---
-                if (event.message.text === 'สวัสดี' && event.replyToken) {
-                  await lineClient.replyMessage(event.replyToken, {
-                    type: 'text',
-                    text: 'สวัสดีครับ! มีอะไรให้ช่วยไหมครับ?'
-                  });
+                try {
+                  if (event.message.text === 'สวัสดี' && event.replyToken) {
+                    await lineClient.replyMessage(event.replyToken, {
+                      type: 'text',
+                      text: 'สวัสดีครับ! มีอะไรให้ช่วยไหมครับ?'
+                    });
+                  }
+                } catch (error) {
+                  console.error('❌ Error handling text message:', error);
+                  // ส่งข้อความแจ้งข้อผิดพลาดสำหรับข้อความ
+                  await sendErrorMessage(
+                    event.replyToken,
+                    event.source.userId,
+                    event.source.groupId,
+                    event.source.roomId,
+                    'เกิดข้อผิดพลาดในการตอบกลับข้อความ'
+                  );
                 }
                 // --- END: เพิ่ม Logic การตอบกลับข้อความ ---
                 console.log(`💬 Text message: ${event.message.text}`)
                 break
               case 'audio':
                 console.log(`🎵 Audio message: ${event.message.id}`)
-                await handleAudioMessage(event)
+                try {
+                  await handleAudioMessage(event)
+                } catch (error) {
+                  console.error('❌ Error handling audio message:', error);
+                  // ข้อความแจ้งข้อผิดพลาดจะถูกส่งภายใน handleAudioMessage แล้ว
+                }
                 break
               case 'image':
                 console.log(`🖼️ Image message: ${event.message.id}`)
                 break
               default:
                 console.log(`📎 Other message type: ${event.message.type}`)
-                if (event.replyToken) {
-                  await lineClient.replyMessage(event.replyToken, {
-                    type: 'text',
-                    text: 'ขออภัยครับ บอทยังไม่รองรับข้อความประเภทนี้ในตอนนี้ 🙏'
-                  })
+                try {
+                  if (event.replyToken) {
+                    await lineClient.replyMessage(event.replyToken, {
+                      type: 'text',
+                      text: 'ขออภัยครับ บอทยังไม่รองรับข้อความประเภทนี้ในตอนนี้ 🙏'
+                    })
+                  }
+                } catch (error) {
+                  console.error('❌ Error handling unsupported message type:', error);
+                  // ส่งข้อความแจ้งข้อผิดพลาดสำหรับข้อความที่ไม่รองรับ
+                  await sendErrorMessage(
+                    event.replyToken,
+                    event.source.userId,
+                    event.source.groupId,
+                    event.source.roomId,
+                    'เกิดข้อผิดพลาดในการตอบกลับข้อความ'
+                  );
                 }
                 break
             }
