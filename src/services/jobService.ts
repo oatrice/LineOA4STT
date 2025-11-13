@@ -20,7 +20,7 @@ export interface TranscriptionJob {
 
 export interface CreateJobParams {
   messageId: string
-  userId: string
+  userId?: string // Make userId optional
   replyToken?: string
   groupId?: string
   roomId?: string
