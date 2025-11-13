@@ -6,6 +6,8 @@ CREATE TABLE IF NOT EXISTS transcription_jobs (
   message_id VARCHAR(255) NOT NULL UNIQUE,
   user_id VARCHAR(255) NOT NULL,
   reply_token VARCHAR(255),
+  group_id VARCHAR(255),
+  room_id VARCHAR(255),
   
   -- Audio file info
   original_content_url TEXT,
@@ -31,10 +33,24 @@ CREATE TABLE IF NOT EXISTS transcription_jobs (
   retry_count INTEGER DEFAULT 0
 );
 
+-- เพิ่มคอลัมน์ group_id ถ้ายังไม่มี
+DO $$ BEGIN
+    ALTER TABLE transcription_jobs ADD COLUMN group_id VARCHAR(255);
+EXCEPTION
+    WHEN duplicate_column THEN RAISE NOTICE 'column group_id already exists in transcription_jobs.';
+END $$;
+
+-- เพิ่มคอลัมน์ room_id ถ้ายังไม่มี
+DO $$ BEGIN
+    ALTER TABLE transcription_jobs ADD COLUMN room_id VARCHAR(255);
+EXCEPTION
+    WHEN duplicate_column THEN RAISE NOTICE 'column room_id already exists in transcription_jobs.';
+END $$;
+
 -- สร้าง index สำหรับ performance
-CREATE INDEX idx_transcription_jobs_status ON transcription_jobs(status);
-CREATE INDEX idx_transcription_jobs_user_id ON transcription_jobs(user_id);
-CREATE INDEX idx_transcription_jobs_created_at ON transcription_jobs(created_at);
+CREATE INDEX IF NOT EXISTS idx_transcription_jobs_status ON transcription_jobs(status);
+CREATE INDEX IF NOT EXISTS idx_transcription_jobs_user_id ON transcription_jobs(user_id);
+CREATE INDEX IF NOT EXISTS idx_transcription_jobs_created_at ON transcription_jobs(created_at);
 
 -- สร้าง trigger สำหรับ updated_at
 CREATE OR REPLACE FUNCTION update_updated_at_column()
@@ -45,6 +61,7 @@ BEGIN
 END;
 $$ language 'plpgsql';
 
+DROP TRIGGER IF EXISTS update_transcription_jobs_updated_at ON transcription_jobs;
 CREATE TRIGGER update_transcription_jobs_updated_at 
     BEFORE UPDATE ON transcription_jobs 
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
