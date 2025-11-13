@@ -84,27 +84,29 @@ export function createApp(services: AppServices) {
   // ฟังก์ชันสำหรับจัดการ audio messages
   async function handleAudioMessage(event: LineWebhookEvent) {
     try {
-      if (!event.message || !event.replyToken || !event.source.userId) {
+      if (!event.message || !event.replyToken || !event.source.userId && !event.source.groupId && !event.source.roomId) {
         console.error('❌ Missing required fields for audio processing')
         return
       }
 
       console.log(`🎵 Processing audio message: ${event.message.id}`)
 
-      // 1. สร้าง job record ใน Supabase
-      const job = await jobService.createJob({
-        messageId: event.message.id,
-        userId: event.source.userId,
-        replyToken: event.replyToken,
-      })
-
-      console.log(`✅ Created job ${job.id} for message ${event.message.id}`)
-
-      // 2. ตอบกลับ user ว่ากำลังประมวลผล
+      // 1. ตอบกลับ user ว่ากำลังประมวลผล
       await lineClient.replyMessage(event.replyToken, {
         type: 'text',
         text: '🎵 กำลังแปลงเสียงเป็นข้อความ กรุณารอสักครู่ครับ...',
       })
+
+      // 2. สร้าง job record ใน Supabase
+      const job = await jobService.createJob({
+        messageId: event.message.id,
+        userId: event.source.userId,
+        replyToken: event.replyToken,
+        groupId: event.source.groupId,
+        roomId: event.source.roomId,
+      })
+
+      console.log(`✅ Created job ${job.id} for message ${event.message.id}`)
 
       // 3. เริ่มการประมวลผลแบบ async (ไม่ block webhook response)
       // ไม่ต้องรอให้ processAudioAsync เสร็จสิ้น เพื่อให้ webhook response กลับไปได้ทันที
@@ -125,7 +127,7 @@ export function createApp(services: AppServices) {
   async function processAudioAsync(
     messageId: string,
     jobId: string,
-    userId: string,
+    userId: string | undefined, // Allow userId to be undefined
     timestamp: number
   ) {
     let result: AudioProcessingResult | undefined
@@ -157,11 +159,13 @@ export function createApp(services: AppServices) {
 
       // Get user profile for personalized message
       let displayName = 'ผู้ใช้'
-      try {
-        const userProfile = await lineClient.getProfile(userId)
-        displayName = userProfile.displayName
-      } catch (error) {
-        console.error(`Failed to get profile for user ${userId}:`, error)
+      if (userId) { // Only try to get profile if userId is defined
+        try {
+          const userProfile = await lineClient.getProfile(userId)
+          displayName = userProfile.displayName
+        } catch (error) {
+          console.error(`Failed to get profile for user ${userId}:`, error)
+        }
       }
 
       // Format timestamp
@@ -173,9 +177,30 @@ export function createApp(services: AppServices) {
         timeZone: 'Asia/Bangkok',
       })
 
-      // Send result to user
-      console.log(`✉️ Sending transcription result to user ${userId}`)
-      await lineClient.pushMessage(userId, {
+      // Retrieve the job to get the replyToken and source IDs
+      const job = await jobService.getJob(jobId)
+      if (!job) {
+        console.error(`❌ Job ${jobId} not found. Cannot send reply.`)
+        return
+      }
+
+      let to: string | undefined
+      if (job.group_id) {
+        to = job.group_id
+      } else if (job.room_id) {
+        to = job.room_id
+      } else if (job.user_id) {
+        to = job.user_id
+      }
+
+      if (!to) {
+        console.error(`❌ No valid destination (userId, groupId, or roomId) found for job ${jobId}. Cannot send reply.`)
+        return
+      }
+
+      // Send result to user using push_message
+      console.log(`✉️ Sending transcription result using push_message to ${to}`)
+      await lineClient.pushMessage(to, {
         type: 'text',
         text: `✨ เสร็จแล้วครับ!\n\nจาก: ${displayName}\nข้อความเมื่อ ${timeString}\nผลลัพธ์: ${result.transcript}`,
       })

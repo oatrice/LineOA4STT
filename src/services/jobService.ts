@@ -5,6 +5,8 @@ export interface TranscriptionJob {
   message_id: string
   user_id: string
   reply_token?: string
+  group_id?: string
+  room_id?: string
   status: 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'FAILED'
   transcript?: string
   confidence?: number
@@ -20,6 +22,8 @@ export interface CreateJobParams {
   messageId: string
   userId: string
   replyToken?: string
+  groupId?: string
+  roomId?: string
 }
 
 export interface UpdateJobParams {
@@ -42,6 +46,8 @@ export class JobService {
         message_id: params.messageId,
         user_id: params.userId,
         reply_token: params.replyToken,
+        group_id: params.groupId,
+        room_id: params.roomId,
         status: 'PENDING',
       })
       .select()
@@ -97,4 +103,3 @@ export class JobService {
     return (data || []) as TranscriptionJob[]
   }
 }
-
