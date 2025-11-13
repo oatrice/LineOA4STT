@@ -173,9 +173,16 @@ export function createApp(services: AppServices) {
         timeZone: 'Asia/Bangkok',
       })
 
-      // Send result to user
-      console.log(`✉️ Sending transcription result to user ${userId}`)
-      await lineClient.pushMessage(userId, {
+      // Retrieve the job to get the replyToken
+      const job = await jobService.getJob(jobId)
+      if (!job || !job.reply_token) {
+        console.error(`❌ Job ${jobId} or its reply_token not found. Cannot send reply.`)
+        return
+      }
+
+      // Send result to user using replyToken
+      console.log(`✉️ Sending transcription result using reply_token to original source`)
+      await lineClient.replyMessage(job.reply_token, {
         type: 'text',
         text: `✨ เสร็จแล้วครับ!\n\nจาก: ${displayName}\nข้อความเมื่อ ${timeString}\nผลลัพธ์: ${result.transcript}`,
       })
