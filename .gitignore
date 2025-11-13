@@ -38,5 +38,3 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 # Google Cloud credentials
 line-oa-stt-663a579e9098.json
 temp_audio_test/test-message-id.m4a
-.env.development
-.env.development
