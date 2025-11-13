@@ -107,12 +107,15 @@ export function createApp(services: AppServices) {
       })
 
       // 3. เริ่มการประมวลผลแบบ async (ไม่ block webhook response)
+      // ไม่ต้องรอให้ processAudioAsync เสร็จสิ้น เพื่อให้ webhook response กลับไปได้ทันที
       processAudioAsync(
         event.message.id,
         job.id,
         event.source.userId,
         event.timestamp
-      )
+      ).catch(error => {
+        console.error('❌ Uncaught error in processAudioAsync:', error)
+      })
     } catch (error) {
       console.error('❌ Error handling audio message:', error)
     }
