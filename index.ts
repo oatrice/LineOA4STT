@@ -79,6 +79,8 @@ interface AppServices {
 export function createApp(services: AppServices) {
   const { lineClient, jobService, sttService, audioService, lineChannelSecret } = services;
 
+  console.log('Current NODE_ENV:', process.env.NODE_ENV);
+
   // ฟังก์ชันสำหรับจัดการ audio messages
   async function handleAudioMessage(event: LineWebhookEvent) {
     try {
@@ -303,18 +305,32 @@ export function createApp(services: AppServices) {
   return app;
 }
 
-// Environment variables (ควรใช้ .env ใน production)
-const LINE_CHANNEL_SECRET = process.env.LINE_CHANNEL_SECRET || 'your-line-channel-secret'
+// Environment variables
+const LINE_CHANNEL_SECRET = process.env.LINE_CHANNEL_SECRET
+const SUPABASE_URL = process.env.SUPABASE_URL
+const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY
+const LINE_CHANNEL_ACCESS_TOKEN = process.env.LINE_CHANNEL_ACCESS_TOKEN
+
+// Validate environment variables
+if (!LINE_CHANNEL_SECRET) {
+  throw new Error('LINE_CHANNEL_SECRET is not defined in environment variables.')
+}
+if (!SUPABASE_URL) {
+  throw new Error('SUPABASE_URL is not defined in environment variables.')
+}
+if (!SUPABASE_ANON_KEY) {
+  throw new Error('SUPABASE_ANON_KEY is not defined in environment variables.')
+}
+if (!LINE_CHANNEL_ACCESS_TOKEN) {
+  throw new Error('LINE_CHANNEL_ACCESS_TOKEN is not defined in environment variables.')
+}
 
 // Supabase client
-const supabase = createClient(
-  process.env.SUPABASE_URL || '',
-  process.env.SUPABASE_ANON_KEY || ''
-)
+const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
 
 // Line client
 const lineClient = new Client({
-  channelAccessToken: process.env.LINE_CHANNEL_ACCESS_TOKEN || '',
+  channelAccessToken: LINE_CHANNEL_ACCESS_TOKEN,
 })
 
 // Initialize services
