@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, mock as mockFn, afterEach, vi } from 'bun:test'
 import { createHmac } from 'crypto'
-import { createApp } from '../index' // Import createApp
+import { createAppWithEnv } from '../index' // Import createAppWithEnv
 import { Client as LineClientType } from '@line/bot-sdk'
 import { JobService } from '../src/services/jobService'
 import { STTService } from '../src/services/sttService'
@@ -58,19 +58,36 @@ beforeEach(async () => {
     getMessageContent: mockGetMessageContent,
   } as unknown as LineClientType
 
-  mockCreateJob = mockFn(() => Promise.resolve({
-    id: 'test-job-id',
-    message_id: 'test-audio-message-id',
-    user_id: 'test-user-id',
-    status: 'PENDING'
-  }))
-  mockUpdateJob = mockFn(() => Promise.resolve())
-  mockGetJob = mockFn(() => Promise.resolve({
-    id: 'test-job-id',
-    message_id: 'test-audio-message-id',
-    user_id: 'test-user-id',
-    status: 'PENDING'
-  }))
+  // In-memory store for jobs
+  const jobStore: Map<string, any> = new Map()
+  let jobCounter = 1
+
+  mockCreateJob = mockFn((jobData) => {
+    const jobId = `test-job-id-${jobCounter++}`
+    const newJob = {
+      id: jobId,
+      message_id: jobData.messageId,
+      user_id: jobData.userId,
+      status: 'PENDING',
+      group_id: jobData.groupId,
+      room_id: jobData.roomId,
+      replyToken: jobData.replyToken, // Store replyToken as well
+    }
+    jobStore.set(jobId, newJob)
+    return Promise.resolve(newJob)
+  })
+
+  mockUpdateJob = mockFn((jobId, updates) => {
+    if (jobStore.has(jobId)) {
+      const updatedJob = { ...jobStore.get(jobId), ...updates }
+      jobStore.set(jobId, updatedJob)
+    }
+    return Promise.resolve()
+  })
+
+  mockGetJob = mockFn((jobId) => {
+    return Promise.resolve(jobStore.get(jobId) || null)
+  })
 
   mockJobService = {
     createJob: mockCreateJob,
@@ -149,14 +166,24 @@ beforeEach(async () => {
   mockSaveAudioFile.mockClear()
   mockSupabaseFrom.mockClear()
   
-  // Create app with mocked services
-  app = createApp({
-    lineClient: mockLineClient,
-    jobService: mockJobService,
-    sttService: mockSTTService,
-    audioService: mockAudioService,
-    lineChannelSecret: LINE_CHANNEL_SECRET, // Pass the mock channel secret
-  })
+  // Create app with mocked services injected directly
+  const appInstance = createAppWithEnv(
+    {
+      LINE_CHANNEL_SECRET: LINE_CHANNEL_SECRET,
+      LINE_CHANNEL_ACCESS_TOKEN: 'test-access-token',
+      SUPABASE_URL: 'https://test.supabase.co',
+      SUPABASE_ANON_KEY: 'test-anon-key',
+      NODE_ENV: 'test',
+    },
+    {
+      lineClient: mockLineClient,
+      jobService: mockJobService,
+      sttService: mockSTTService,
+      audioService: mockAudioService,
+    }
+  );
+
+  app = appInstance; // Assign the app instance to the global 'app' variable
 })
 
 afterEach(() => {
