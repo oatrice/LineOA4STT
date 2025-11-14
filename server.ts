@@ -20,8 +20,11 @@ async function main() {
   const LINE_CHANNEL_SECRET = process.env.LINE_CHANNEL_SECRET || await readSecretFile('LINE_CHANNEL_SECRET');
   const LINE_CHANNEL_ACCESS_TOKEN = process.env.LINE_CHANNEL_ACCESS_TOKEN || await readSecretFile('LINE_CHANNEL_ACCESS_TOKEN');
   const SUPABASE_URL = process.env.SUPABASE_URL;
-  const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY;
+  const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || await readSecretFile('SUPABASE_ANON_KEY');
   const NODE_ENV = process.env.NODE_ENV;
+
+  console.log(`DEBUG: SUPABASE_URL = ${SUPABASE_URL ? 'Defined' : 'Undefined'}`);
+  console.log(`DEBUG: SUPABASE_ANON_KEY = ${SUPABASE_ANON_KEY ? 'Defined' : 'Undefined'}`);
 
   // ตรวจสอบว่า environment variables ที่จำเป็นมีค่าหรือไม่
   if (!LINE_CHANNEL_SECRET) {
