@@ -5,10 +5,15 @@ import { createClient } from '@supabase/supabase-js'
 import { JobService } from './src/services/jobService'
 import { STTService } from './src/services/sttService'
 import { AudioService } from './src/services/audioService'
+import { promises as fs } from 'fs'
+import * as path from 'path'
 
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Client as LineClientType } from '@line/bot-sdk'
 import type { AudioProcessingResult } from './src/services/audioService'
+
+const SECRET_FILES_PATH = '/etc/secrets'
+const TEMP_DIR = path.join(process.cwd(), 'temp')
 
 // TypeBox schemas สำหรับ Line webhook payload validation
 const LineWebhookSourceSchema = t.Object({
@@ -73,21 +78,13 @@ interface AppServices {
   jobService: JobService;
   sttService: STTService;
   audioService: AudioService;
-  lineChannelSecret: string; // Add lineChannelSecret to services
-}
-
-interface AppEnv {
-  LINE_CHANNEL_SECRET: string;
-  SUPABASE_URL: string;
-  SUPABASE_ANON_KEY: string;
-  LINE_CHANNEL_ACCESS_TOKEN: string;
-  NODE_ENV?: string; // Add NODE_ENV to AppEnv
+  lineChannelSecret: string;
 }
 
 export function createApp(services: AppServices) {
   const { lineClient, jobService, sttService, audioService, lineChannelSecret } = services;
 
-  console.log('Current NODE_ENV:', process.env.NODE_ENV); // Keep using process.env for NODE_ENV as it's a global concept
+  // console.log('Current NODE_ENV:', process.env.NODE_ENV); // Keep using process.env for NODE_ENV as it's a global concept
 
   // ฟังก์ชันสำหรับส่งข้อความแจ้งข้อผิดพลาด
   async function sendErrorMessage(
@@ -452,36 +449,93 @@ export function createApp(services: AppServices) {
   return app;
 }
 
-export function createAppWithEnv(env: AppEnv, mockServices?: Partial<AppServices>) {
-  // Validate environment variables
-  if (!env.LINE_CHANNEL_SECRET) {
-    throw new Error('LINE_CHANNEL_SECRET is not defined in environment variables.')
+// Function to read secret files
+async function readSecretFile(filename: string): Promise<string | undefined> {
+  try {
+    const filePath = path.join(SECRET_FILES_PATH, filename)
+    return await fs.readFile(filePath, 'utf8')
+  } catch (error) {
+    console.warn(`⚠️ Could not read secret file ${filename} from ${SECRET_FILES_PATH}:`, error)
+    return undefined
   }
-  if (!env.SUPABASE_URL) {
-    throw new Error('SUPABASE_URL is not defined in environment variables.')
+}
+
+async function initializeApp() {
+  // Read environment variables and secret files
+  const LINE_CHANNEL_SECRET =
+    (await readSecretFile('LINE_CHANNEL_SECRET')) ||
+    process.env.LINE_CHANNEL_SECRET ||
+    'your-line-channel-secret'
+
+  const LINE_CHANNEL_ACCESS_TOKEN =
+    (await readSecretFile('LINE_CHANNEL_ACCESS_TOKEN')) ||
+    process.env.LINE_CHANNEL_ACCESS_TOKEN ||
+    ''
+
+  const SUPABASE_URL = process.env.SUPABASE_URL || ''
+  const SUPABASE_ANON_KEY =
+    (await readSecretFile('SUPABASE_ANON_KEY')) ||
+    process.env.SUPABASE_ANON_KEY ||
+    ''
+
+  // Handle Google Application Credentials
+  let googleCredentialsPath: string | undefined
+  let googleCredentialsJsonContent: string | undefined
+
+  // 1. Try to read GOOGLE_CREDENTIALS_JSON from secret file
+  googleCredentialsJsonContent = await readSecretFile('GOOGLE_CREDENTIALS_JSON')
+
+  // 2. If not found, try to read GOOGLE_CREDENTIALS_JSON from environment variable
+  if (!googleCredentialsJsonContent) {
+    googleCredentialsJsonContent = process.env.GOOGLE_CREDENTIALS_JSON
   }
-  if (!env.SUPABASE_ANON_KEY) {
-    throw new Error('SUPABASE_ANON_KEY is not defined in environment variables.')
+
+  // 3. If still not found, try to read GOOGLE_APPLICATION_CREDENTIALS_ (from Render) from environment variable
+  if (!googleCredentialsJsonContent) {
+    googleCredentialsJsonContent = process.env.GOOGLE_APPLICATION_CREDENTIALS_
   }
-  if (!env.LINE_CHANNEL_ACCESS_TOKEN) {
-    throw new Error('LINE_CHANNEL_ACCESS_TOKEN is not defined in environment variables.')
+
+  if (googleCredentialsJsonContent) {
+    try {
+      await fs.mkdir(TEMP_DIR, { recursive: true })
+      googleCredentialsPath = path.join(TEMP_DIR, 'google-credentials.json')
+      await fs.writeFile(googleCredentialsPath, googleCredentialsJsonContent, 'utf8')
+      process.env.GOOGLE_APPLICATION_CREDENTIALS = googleCredentialsPath
+      console.log('✅ Google Application Credentials set from secret file or environment variable.')
+    } catch (error) {
+      console.error('❌ Error writing Google credentials to temp file:', error)
+    }
+  } else if (process.env.GOOGLE_APPLICATION_CREDENTIALS) {
+    googleCredentialsPath = process.env.GOOGLE_APPLICATION_CREDENTIALS
+    console.log('✅ Google Application Credentials set from existing environment variable.')
+  } else {
+    console.warn('⚠️ GOOGLE_APPLICATION_CREDENTIALS not found. STT service might fail.')
   }
 
   // Supabase client
-  const supabase = createClient(env.SUPABASE_URL, env.SUPABASE_ANON_KEY)
+  const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
 
   // Line client
-  const lineClient = mockServices?.lineClient || new Client({
-    channelAccessToken: env.LINE_CHANNEL_ACCESS_TOKEN,
+  const lineClient = new Client({
+    channelAccessToken: LINE_CHANNEL_ACCESS_TOKEN,
   })
 
   // Initialize services
-  const jobService = mockServices?.jobService || new JobService(supabase)
-  const sttService = mockServices?.sttService || new STTService()
-  const audioService = mockServices?.audioService || new AudioService(lineClient, sttService)
+  const jobService = new JobService(supabase)
+  const sttService = new STTService() // STTService will pick up GOOGLE_APPLICATION_CREDENTIALS
+  const audioService = new AudioService(lineClient, sttService)
 
-  return createApp({ lineClient, jobService, sttService, audioService, lineChannelSecret: env.LINE_CHANNEL_SECRET })
+  return createApp({
+    lineClient,
+    jobService,
+    sttService,
+    audioService,
+    lineChannelSecret: LINE_CHANNEL_SECRET,
+  }).handle
 }
 
-// ถ้าต้องการรัน local development สามารถใช้ Bun ได้:
+// Export as fetch handler for various runtimes (Bun, Deno, Cloudflare Workers)
+export default initializeApp
+
+// If you want to run local development, you can use Bun:
 // bun --watch index.ts
