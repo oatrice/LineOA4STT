@@ -12,7 +12,8 @@
     "type-check": "bun tsc --noEmit"
   },
   "devDependencies": {
-    "@types/bun": "latest"
+    "@types/bun": "latest",
+    "supabase": "^2.58.5"
   },
   "peerDependencies": {
     "typescript": "^5"

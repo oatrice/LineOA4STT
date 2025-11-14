@@ -42,7 +42,11 @@ export class STTService {
       config: recognitionConfig,
     }
 
+    console.log('STT Request:', JSON.stringify(request, null, 2)) // Add debug log for request
+
     const [response] = await this.speechClient.recognize(request)
+
+    console.log('STT Response:', JSON.stringify(response, null, 2)) // Add debug log for response
 
     const transcript =
       response.results
@@ -77,7 +81,11 @@ export class STTService {
       config: recognitionConfig,
     }
 
+    console.log('STT Request (Buffer):', JSON.stringify(request, null, 2)) // Add debug log for request
+    
     const [response] = await this.speechClient.recognize(request)
+
+    console.log('STT Response (Buffer):', JSON.stringify(response, null, 2)) // Add debug log for response
 
     const transcript =
       response.results
