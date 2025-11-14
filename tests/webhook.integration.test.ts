@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, mock as mockFn, afterEach, vi } from 'bun:test'
 import { createHmac } from 'crypto'
-import initializeApp, { createApp } from '../index' // Import initializeApp as default and createApp
+import { createApp } from '../index' // Import createApp
 import { Client as LineClientType } from '@line/bot-sdk'
 import { JobService } from '../src/services/jobService'
 import { STTService } from '../src/services/sttService'
@@ -38,7 +38,11 @@ let mockSupabaseClient: SupabaseClient
 
 let app: any
 
+// Store for created jobs
+let jobs: { [key: string]: any } = {}
+
 beforeEach(async () => {
+  jobs = {}
   // Initialize mock functions
   mockReplyMessage = mockFn(() => Promise.resolve({}))
   mockPushMessage = mockFn(() => Promise.resolve({}))
@@ -58,36 +62,18 @@ beforeEach(async () => {
     getMessageContent: mockGetMessageContent,
   } as unknown as LineClientType
 
-  // In-memory store for jobs
-  const jobStore: Map<string, any> = new Map()
-  let jobCounter = 1
-
-  mockCreateJob = mockFn((jobData) => {
-    const jobId = `test-job-id-${jobCounter++}`
-    const newJob = {
-      id: jobId,
-      message_id: jobData.messageId,
-      user_id: jobData.userId,
-      status: 'PENDING',
-      group_id: jobData.groupId,
-      room_id: jobData.roomId,
-      replyToken: jobData.replyToken, // Store replyToken as well
+  mockCreateJob = mockFn(({ messageId, userId }) => {
+    const job = {
+      id: `test-job-id-${messageId}`,
+      message_id: messageId,
+      user_id: userId,
+      status: 'PENDING'
     }
-    jobStore.set(jobId, newJob)
-    return Promise.resolve(newJob)
+    jobs[job.id] = job
+    return Promise.resolve(job)
   })
-
-  mockUpdateJob = mockFn((jobId, updates) => {
-    if (jobStore.has(jobId)) {
-      const updatedJob = { ...jobStore.get(jobId), ...updates }
-      jobStore.set(jobId, updatedJob)
-    }
-    return Promise.resolve()
-  })
-
-  mockGetJob = mockFn((jobId) => {
-    return Promise.resolve(jobStore.get(jobId) || null)
-  })
+  mockUpdateJob = mockFn(() => Promise.resolve())
+  mockGetJob = mockFn((jobId) => Promise.resolve(jobs[jobId]))
 
   mockJobService = {
     createJob: mockCreateJob,
@@ -166,61 +152,15 @@ beforeEach(async () => {
   mockSaveAudioFile.mockClear()
   mockSupabaseFrom.mockClear()
   
-  // Mock the internal createApp function to inject mocked services
-  // This allows initializeApp to run its environment setup, but use our mocks for the core app logic
-  vi.mock('../index', () => {
-    return {
-      createApp: vi.fn((services) => {
-        // We need to import the actual createApp to use its logic,
-        // but inject our mocks for the services.
-        // This requires a slightly different mocking approach for Bun.
-        // For now, we'll directly return a mocked app handler.
-        // A more robust solution might involve a factory for the mocked app.
-        return createApp({
-          ...services,
-          lineClient: mockLineClient,
-          jobService: mockJobService,
-          sttService: mockSTTService,
-          audioService: mockAudioService,
-        });
-      }),
-      default: vi.fn(async () => {
-        // This mock for the default export (initializeApp) will return a mocked app handler
-        // that uses our mocked services.
-        const mockedApp = createApp({
-          lineClient: mockLineClient,
-          jobService: mockJobService,
-          sttService: mockSTTService,
-          audioService: mockAudioService,
-          lineChannelSecret: LINE_CHANNEL_SECRET,
-          lineChannelAccessToken: 'test-access-token',
-        });
-        return mockedApp.handle;
-      }),
-    };
-  });
-
-  // Mock fs/promises for readSecretFile
-  vi.mock('fs/promises', () => ({
-    readFile: vi.fn(async (filePath: string) => {
-      if (filePath.includes('LINE_CHANNEL_SECRET')) return LINE_CHANNEL_SECRET;
-      if (filePath.includes('LINE_CHANNEL_ACCESS_TOKEN')) return 'test-access-token';
-      if (filePath.includes('SUPABASE_ANON_KEY')) return 'test-anon-key';
-      if (filePath.includes('GOOGLE_CREDENTIALS_JSON')) return JSON.stringify({ type: 'service_account' });
-      throw new Error(`File not found: ${filePath}`);
-    }),
-    mkdir: vi.fn(() => Promise.resolve()),
-    writeFile: vi.fn(() => Promise.resolve()),
-  }));
-
-  // Set process.env for other variables
-  process.env.SUPABASE_URL = 'https://test.supabase.co';
-  process.env.NODE_ENV = 'test';
-
-  // Re-import initializeApp after mocking to ensure mocks are applied
-  const { default: initializeAppWithMocks } = await import('../index');
-  const appInstance = await initializeAppWithMocks();
-  app = appInstance; // Assign the app instance to the global 'app' variable
+  // Create app with mocked services
+  app = createApp({
+    lineClient: mockLineClient,
+    jobService: mockJobService,
+    sttService: mockSTTService,
+    audioService: mockAudioService,
+    lineChannelSecret: LINE_CHANNEL_SECRET, // Pass the mock channel secret
+    lineChannelAccessToken: 'test-access-token', // Add the missing access token
+  })
 })
 
 afterEach(() => {
