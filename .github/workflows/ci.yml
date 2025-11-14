@@ -6,6 +6,12 @@ on:
   pull_request:
     branches: [main, develop]
 
+permissions:
+  contents: read
+  # เพื่อให้สิทธิ์ในการอ่านโค้ด
+  actions: write 
+  # สำคัญ: เพื่อให้สามารถจัดการและส่งต่อ workflow status ได้อย่างถูกต้อง
+
 jobs:
   test:
     name: Test & Type Check
