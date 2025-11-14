@@ -4,7 +4,6 @@ on:
   workflow_run:
     workflows: ["CI"]
     types: [completed]
-    branches: [main, develop] # ให้ workflow ทำงานเมื่อ CI เสร็จสมบูรณ์บน main หรือ develop
 
 permissions:
   contents: read
