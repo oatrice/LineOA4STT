@@ -6,6 +6,11 @@ on:
     types: [completed]
     branches: [main, develop] # ให้ workflow ทำงานเมื่อ CI เสร็จสมบูรณ์บน main หรือ develop
 
+permissions:
+  contents: read
+  pull-requests: write # เพิ่ม permissions นี้หากต้องการให้ GitHub Actions สามารถเขียนคอมเมนต์หรือสถานะ PR ได้
+  deployments: write # เพิ่ม permissions นี้สำหรับการ deploy
+
 jobs:
   deploy-dev:
     name: Deploy to Development
