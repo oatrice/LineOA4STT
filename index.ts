@@ -79,10 +79,11 @@ interface AppServices {
   sttService: STTService;
   audioService: AudioService;
   lineChannelSecret: string;
+  lineChannelAccessToken: string;
 }
 
 export function createApp(services: AppServices) {
-  const { lineClient, jobService, sttService, audioService, lineChannelSecret } = services;
+  const { lineClient, jobService, sttService, audioService, lineChannelSecret, lineChannelAccessToken } = services;
 
   // console.log('Current NODE_ENV:', process.env.NODE_ENV); // Keep using process.env for NODE_ENV as it's a global concept
 
@@ -490,11 +491,6 @@ async function initializeApp() {
     googleCredentialsJsonContent = process.env.GOOGLE_CREDENTIALS_JSON
   }
 
-  // 3. If still not found, try to read GOOGLE_APPLICATION_CREDENTIALS_ (from Render) from environment variable
-  if (!googleCredentialsJsonContent) {
-    googleCredentialsJsonContent = process.env.GOOGLE_APPLICATION_CREDENTIALS_
-  }
-
   if (googleCredentialsJsonContent) {
     try {
       await fs.mkdir(TEMP_DIR, { recursive: true })
@@ -531,6 +527,7 @@ async function initializeApp() {
     sttService,
     audioService,
     lineChannelSecret: LINE_CHANNEL_SECRET,
+    lineChannelAccessToken: LINE_CHANNEL_ACCESS_TOKEN, // Pass access token
   }).handle
 }
 
