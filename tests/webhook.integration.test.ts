@@ -13,6 +13,8 @@ const LINE_CHANNEL_SECRET = 'test-channel-secret'
 let mockReplyMessage: ReturnType<typeof mockFn>
 let mockPushMessage: ReturnType<typeof mockFn>
 let mockGetProfile: ReturnType<typeof mockFn>
+let mockGetGroupMemberProfile: ReturnType<typeof mockFn> // Add mock for group member profile
+let mockGetRoomMemberProfile: ReturnType<typeof mockFn> // Add mock for room member profile
 let mockGetMessageContent: ReturnType<typeof mockFn>
 
 let mockCreateJob: ReturnType<typeof mockFn>
@@ -47,6 +49,8 @@ beforeEach(async () => {
   mockReplyMessage = mockFn(() => Promise.resolve({}))
   mockPushMessage = mockFn(() => Promise.resolve({}))
   mockGetProfile = mockFn(() => Promise.resolve({ displayName: 'Test User' }))
+  mockGetGroupMemberProfile = mockFn(() => Promise.resolve({ displayName: 'Group Member Name' })) // Mock for group member
+  mockGetRoomMemberProfile = mockFn(() => Promise.resolve({ displayName: 'Room Member Name' })) // Mock for room member
   mockGetMessageContent = mockFn(() => Promise.resolve({
     on: (event: string, handler: (data?: any) => void) => {
       if (event === 'data') handler(Buffer.from('fake-audio-data'))
@@ -59,14 +63,18 @@ beforeEach(async () => {
     replyMessage: mockReplyMessage,
     pushMessage: mockPushMessage,
     getProfile: mockGetProfile,
+    getGroupMemberProfile: mockGetGroupMemberProfile, // Add to mockLineClient
+    getRoomMemberProfile: mockGetRoomMemberProfile, // Add to mockLineClient
     getMessageContent: mockGetMessageContent,
   } as unknown as LineClientType
 
-  mockCreateJob = mockFn(({ messageId, userId }) => {
+  mockCreateJob = mockFn(({ messageId, userId, groupId, roomId }) => {
     const job = {
       id: `test-job-id-${messageId}`,
       message_id: messageId,
       user_id: userId,
+      group_id: groupId, // Add groupId
+      room_id: roomId,   // Add roomId
       status: 'PENDING'
     }
     jobs[job.id] = job
@@ -140,6 +148,8 @@ beforeEach(async () => {
   mockReplyMessage.mockClear()
   mockPushMessage.mockClear()
   mockGetProfile.mockClear()
+  mockGetGroupMemberProfile.mockClear() // Clear mock history
+  mockGetRoomMemberProfile.mockClear() // Clear mock history
   mockGetMessageContent.mockClear()
   mockCreateJob.mockClear()
   mockUpdateJob.mockClear()
@@ -539,6 +549,242 @@ describe('Webhook Integration Tests', () => {
       expect(pushCall[0]).toBe('test-user-id-push')
       expect(pushCall[1].type).toBe('text')
       expect(pushCall[1].text).toContain('Test User') // ชื่อจาก mock getProfile
+      expect(pushCall[1].text).toContain('ผลการแปลงเสียงเป็นข้อความ') // transcript จาก mock
+    })
+
+    it('should call pushMessage with correct group member name after audio processing in a group chat', async () => {
+      const groupId = 'test-group-id'
+      const userId = 'test-group-user-id'
+      const payload = {
+        destination: 'test-destination',
+        events: [
+          {
+            type: 'message',
+            timestamp: 1234567890000,
+            source: {
+              type: 'group',
+              groupId: groupId,
+              userId: userId,
+            },
+            replyToken: 'test-reply-token-group',
+            message: {
+              id: 'test-audio-message-group',
+              type: 'audio',
+              duration: 5000,
+            },
+          },
+        ],
+      }
+
+      const body = JSON.stringify(payload)
+      const signature = createLineSignature(body)
+
+      const request = new Request('http://localhost/webhook', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-line-signature': signature,
+        },
+        body,
+      })
+
+      const response = await app.handle(request)
+      expect(response.status).toBe(200)
+
+      // รอให้ async processing เสร็จ
+      await new Promise(resolve => setTimeout(resolve, 200))
+
+      // ตรวจสอบว่าเรียก processAudio
+      expect(mockAudioService.processAudio).toHaveBeenCalledTimes(1)
+      
+      // ตรวจสอบว่าเรียก getGroupMemberProfile
+      expect(mockLineClient.getGroupMemberProfile).toHaveBeenCalledTimes(1)
+      expect(mockLineClient.getGroupMemberProfile).toHaveBeenCalledWith(groupId, userId)
+      
+      // ตรวจสอบว่าเรียก pushMessage พร้อมข้อความที่ถูกต้อง
+      expect(mockLineClient.pushMessage).toHaveBeenCalledTimes(1)
+      const pushCall = (mockLineClient.pushMessage as any).mock.calls[0] as any[]
+      expect(pushCall).toBeDefined()
+      expect(pushCall[0]).toBe(groupId)
+      expect(pushCall[1].type).toBe('text')
+      expect(pushCall[1].text).toContain('Group Member Name') // ชื่อจาก mock getGroupMemberProfile
+      expect(pushCall[1].text).toContain('ผลการแปลงเสียงเป็นข้อความ') // transcript จาก mock
+    })
+
+    it('should call pushMessage with correct room member name after audio processing in a room chat', async () => {
+      const roomId = 'test-room-id'
+      const userId = 'test-room-user-id'
+      const payload = {
+        destination: 'test-destination',
+        events: [
+          {
+            type: 'message',
+            timestamp: 1234567890000,
+            source: {
+              type: 'room',
+              roomId: roomId,
+              userId: userId,
+            },
+            replyToken: 'test-reply-token-room',
+            message: {
+              id: 'test-audio-message-room',
+              type: 'audio',
+              duration: 5000,
+            },
+          },
+        ],
+      }
+
+      const body = JSON.stringify(payload)
+      const signature = createLineSignature(body)
+
+      const request = new Request('http://localhost/webhook', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-line-signature': signature,
+        },
+        body,
+      })
+
+      const response = await app.handle(request)
+      expect(response.status).toBe(200)
+
+      // รอให้ async processing เสร็จ
+      await new Promise(resolve => setTimeout(resolve, 200))
+
+      // ตรวจสอบว่าเรียก processAudio
+      expect(mockAudioService.processAudio).toHaveBeenCalledTimes(1)
+      
+      // ตรวจสอบว่าเรียก getRoomMemberProfile
+      expect(mockLineClient.getRoomMemberProfile).toHaveBeenCalledTimes(1)
+      expect(mockLineClient.getRoomMemberProfile).toHaveBeenCalledWith(roomId, userId)
+      
+      // ตรวจสอบว่าเรียก pushMessage พร้อมข้อความที่ถูกต้อง
+      expect(mockLineClient.pushMessage).toHaveBeenCalledTimes(1)
+      const pushCall = (mockLineClient.pushMessage as any).mock.calls[0] as any[]
+      expect(pushCall).toBeDefined()
+      expect(pushCall[0]).toBe(roomId)
+      expect(pushCall[1].type).toBe('text')
+      expect(pushCall[1].text).toContain('Room Member Name') // ชื่อจาก mock getRoomMemberProfile
+      expect(pushCall[1].text).toContain('ผลการแปลงเสียงเป็นข้อความ') // transcript จาก mock
+    })
+
+    it('should call pushMessage with correct group member name after audio processing in a group chat', async () => {
+      const groupId = 'test-group-id'
+      const userId = 'test-group-user-id'
+      const payload = {
+        destination: 'test-destination',
+        events: [
+          {
+            type: 'message',
+            timestamp: 1234567890000,
+            source: {
+              type: 'group',
+              groupId: groupId,
+              userId: userId,
+            },
+            replyToken: 'test-reply-token-group',
+            message: {
+              id: 'test-audio-message-group',
+              type: 'audio',
+              duration: 5000,
+            },
+          },
+        ],
+      }
+
+      const body = JSON.stringify(payload)
+      const signature = createLineSignature(body)
+
+      const request = new Request('http://localhost/webhook', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-line-signature': signature,
+        },
+        body,
+      })
+
+      const response = await app.handle(request)
+      expect(response.status).toBe(200)
+
+      // รอให้ async processing เสร็จ
+      await new Promise(resolve => setTimeout(resolve, 200))
+
+      // ตรวจสอบว่าเรียก processAudio
+      expect(mockAudioService.processAudio).toHaveBeenCalledTimes(1)
+      
+      // ตรวจสอบว่าเรียก getGroupMemberProfile
+      expect(mockLineClient.getGroupMemberProfile).toHaveBeenCalledTimes(1)
+      expect(mockLineClient.getGroupMemberProfile).toHaveBeenCalledWith(groupId, userId)
+      
+      // ตรวจสอบว่าเรียก pushMessage พร้อมข้อความที่ถูกต้อง
+      expect(mockLineClient.pushMessage).toHaveBeenCalledTimes(1)
+      const pushCall = (mockLineClient.pushMessage as any).mock.calls[0] as any[]
+      expect(pushCall).toBeDefined()
+      expect(pushCall[0]).toBe(groupId)
+      expect(pushCall[1].type).toBe('text')
+      expect(pushCall[1].text).toContain('Group Member Name') // ชื่อจาก mock getGroupMemberProfile
+      expect(pushCall[1].text).toContain('ผลการแปลงเสียงเป็นข้อความ') // transcript จาก mock
+    })
+
+    it('should call pushMessage with correct room member name after audio processing in a room chat', async () => {
+      const roomId = 'test-room-id'
+      const userId = 'test-room-user-id'
+      const payload = {
+        destination: 'test-destination',
+        events: [
+          {
+            type: 'message',
+            timestamp: 1234567890000,
+            source: {
+              type: 'room',
+              roomId: roomId,
+              userId: userId,
+            },
+            replyToken: 'test-reply-token-room',
+            message: {
+              id: 'test-audio-message-room',
+              type: 'audio',
+              duration: 5000,
+            },
+          },
+        ],
+      }
+
+      const body = JSON.stringify(payload)
+      const signature = createLineSignature(body)
+
+      const request = new Request('http://localhost/webhook', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-line-signature': signature,
+        },
+        body,
+      })
+
+      const response = await app.handle(request)
+      expect(response.status).toBe(200)
+
+      // รอให้ async processing เสร็จ
+      await new Promise(resolve => setTimeout(resolve, 200))
+
+      // ตรวจสอบว่าเรียก processAudio
+      expect(mockAudioService.processAudio).toHaveBeenCalledTimes(1)
+      
+      // ตรวจสอบว่าเรียก getRoomMemberProfile
+      expect(mockLineClient.getRoomMemberProfile).toHaveBeenCalledTimes(1)
+      expect(mockLineClient.getRoomMemberProfile).toHaveBeenCalledWith(roomId, userId)
+      
+      // ตรวจสอบว่าเรียก pushMessage พร้อมข้อความที่ถูกต้อง
+      expect(mockLineClient.pushMessage).toHaveBeenCalledTimes(1)
+      const pushCall = (mockLineClient.pushMessage as any).mock.calls[0] as any[]
+      expect(pushCall).toBeDefined()
+      expect(pushCall[0]).toBe(roomId)
+      expect(pushCall[1].type).toBe('text')
+      expect(pushCall[1].text).toContain('Room Member Name') // ชื่อจาก mock getRoomMemberProfile
       expect(pushCall[1].text).toContain('ผลการแปลงเสียงเป็นข้อความ') // transcript จาก mock
     })
 
