@@ -157,7 +157,7 @@ export function createApp(services: AppServices) {
       // 2. สร้าง job record ใน Supabase
       const job = await jobService.createJob({
         messageId: event.message.id,
-        userId: event.source.userId || undefined, // Ensure userId is string or undefined
+        userId: event.source.userId,
         replyToken: event.replyToken,
         groupId: event.source.groupId,
         roomId: event.source.roomId,
