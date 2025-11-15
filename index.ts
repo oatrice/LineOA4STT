@@ -239,7 +239,7 @@ export function createApp(services: AppServices) {
         status: 'COMPLETED',
         transcript: result.transcript,
         confidence: result.confidence,
-        provider: 'google-cloud-stt',
+        provider: result.provider, // Use the provider from the STTResult
         audio_file_path: result.audioFilePath,
         completed_at: new Date().toISOString(),
       })
