@@ -39,211 +39,219 @@ afterEach(() => {
 })
 
 describe('Webhook Integration Tests', () => {
-  it('should return 200 for health check', async () => {
-    const request = new Request('http://localhost/', {
-      method: 'GET',
-    })
+  describe('Health Check', () => {
+    it('should return 200 for health check', async () => {
+      const request = new Request('http://localhost/', {
+        method: 'GET',
+      })
 
-    const response = await app.handle(request)
-    const text = await response.text()
+      const response = await app.handle(request)
+      const text = await response.text()
 
-    expect(response.status).toBe(200)
-    expect(text).toContain('Line OA STT Bot is running')
-  })
-
-  it('should reject webhook without signature', async () => {
-    const payload = createWebhookPayload([])
-
-    const request = new Request('http://localhost/webhook', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(payload),
-    })
-
-    const response = await app.handle(request)
-    expect(response.status).toBe(401)
-  })
-
-  it('should reject webhook with invalid signature', async () => {
-    const payload = createWebhookPayload([])
-    const body = JSON.stringify(payload)
-    const request = new Request('http://localhost/webhook', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-line-signature': 'invalid-signature',
-      },
-      body,
-    })
-
-    const response = await app.handle(request)
-    expect(response.status).toBe(401)
-  })
-
-  it('should accept webhook with valid signature for text message', async () => {
-    const event = createMessageEvent('text', 'test-message-id', 'user', 'test-user-id', 'test-reply-token', 'สวัสดี')
-    const payload = createWebhookPayload([event])
-    const body = JSON.stringify(payload)
-    const signature = createLineSignature(body)
-
-    const request = new Request('http://localhost/webhook', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-line-signature': signature,
-      },
-      body,
-    })
-
-    const response = await app.handle(request)
-    const result = await response.json()
-
-    expect(response.status).toBe(200)
-    expect(result.status).toBe('ok')
-    expect(mockLineClient.replyMessage).toHaveBeenCalledTimes(1)
-    expect(mockLineClient.replyMessage).toHaveBeenCalledWith('test-reply-token', {
-      type: 'text',
-      text: 'สวัสดีครับ! มีอะไรให้ช่วยไหมครับ?'
+      expect(response.status).toBe(200)
+      expect(text).toContain('Line OA STT Bot is running')
     })
   })
 
-  it('should validate webhook payload schema', async () => {
-    const invalidPayload = {
-      destination: 'test-destination',
-      events: [
-        {
-          type: 'invalid-type',
-          timestamp: 'not-a-number',
+  describe('Webhook Signature Validation', () => {
+    it('should reject webhook without signature', async () => {
+      const payload = createWebhookPayload([])
+
+      const request = new Request('http://localhost/webhook', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
         },
-      ],
-    }
+        body: JSON.stringify(payload),
+      })
 
-    const body = JSON.stringify(invalidPayload)
-    const signature = createLineSignature(body)
-
-    const request = new Request('http://localhost/webhook', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-line-signature': signature,
-      },
-      body,
+      const response = await app.handle(request)
+      expect(response.status).toBe(401)
     })
 
-    const response = await app.handle(request)
-    expect(response.status).toBeGreaterThanOrEqual(400)
+    it('should reject webhook with invalid signature', async () => {
+      const payload = createWebhookPayload([])
+      const body = JSON.stringify(payload)
+      const request = new Request('http://localhost/webhook', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-line-signature': 'invalid-signature',
+        },
+        body,
+      })
+
+      const response = await app.handle(request)
+      expect(response.status).toBe(401)
+    })
+
+    it('should accept webhook with valid signature for text message', async () => {
+      const event = createMessageEvent('text', 'test-message-id', 'user', 'test-user-id', 'test-reply-token', 'สวัสดี')
+      const payload = createWebhookPayload([event])
+      const body = JSON.stringify(payload)
+      const signature = createLineSignature(body)
+
+      const request = new Request('http://localhost/webhook', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-line-signature': signature,
+        },
+        body,
+      })
+
+      const response = await app.handle(request)
+      const result = await response.json()
+
+      expect(response.status).toBe(200)
+      expect(result.status).toBe('ok')
+      expect(mockLineClient.replyMessage).toHaveBeenCalledTimes(1)
+      expect(mockLineClient.replyMessage).toHaveBeenCalledWith('test-reply-token', {
+        type: 'text',
+        text: 'สวัสดีครับ! มีอะไรให้ช่วยไหมครับ?'
+      })
+    })
   })
 
-  it('should call replyMessage for unsupported message types', async () => {
-    const event = createMessageEvent('sticker', 'test-message-id', 'user', 'test-user-id', 'test-reply-token-unsupported')
-    const payload = createWebhookPayload([event])
-    const body = JSON.stringify(payload)
-    const signature = createLineSignature(body)
+  describe('Webhook Payload Schema Validation', () => {
+    it('should validate webhook payload schema', async () => {
+      const invalidPayload = {
+        destination: 'test-destination',
+        events: [
+          {
+            type: 'invalid-type',
+            timestamp: 'not-a-number',
+          },
+        ],
+      }
 
-    const request = new Request('http://localhost/webhook', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-line-signature': signature,
-      },
-      body,
-    })
+      const body = JSON.stringify(invalidPayload)
+      const signature = createLineSignature(body)
 
-    const response = await app.handle(request)
-    const result = await response.json()
+      const request = new Request('http://localhost/webhook', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-line-signature': signature,
+        },
+        body,
+      })
 
-    expect(response.status).toBe(200)
-    expect(result.status).toBe('ok')
-    expect(mockLineClient.replyMessage).toHaveBeenCalledTimes(1)
-    expect(mockLineClient.replyMessage).toHaveBeenCalledWith('test-reply-token-unsupported', {
-      type: 'text',
-      text: 'ขออภัยครับ บอทยังไม่รองรับข้อความประเภทนี้ในตอนนี้ 🙏'
+      const response = await app.handle(request)
+      expect(response.status).toBeGreaterThanOrEqual(400)
     })
   })
 
-  it('should handle audio message - reply immediately and process async', async () => {
-    const event = createMessageEvent('audio', 'test-audio-message-id', 'user', 'test-user-id', 'test-reply-token-audio', 10000)
-    const payload = createWebhookPayload([event])
-    const body = JSON.stringify(payload)
-    const signature = createLineSignature(body)
+  describe('Message Type Handling', () => {
+    it('should call replyMessage for unsupported message types', async () => {
+      const event = createMessageEvent('sticker', 'test-message-id', 'user', 'test-user-id', 'test-reply-token-unsupported')
+      const payload = createWebhookPayload([event])
+      const body = JSON.stringify(payload)
+      const signature = createLineSignature(body)
 
-    const request = new Request('http://localhost/webhook', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-line-signature': signature,
-      },
-      body,
+      const request = new Request('http://localhost/webhook', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-line-signature': signature,
+        },
+        body,
+      })
+
+      const response = await app.handle(request)
+      const result = await response.json()
+
+      expect(response.status).toBe(200)
+      expect(result.status).toBe('ok')
+      expect(mockLineClient.replyMessage).toHaveBeenCalledTimes(1)
+      expect(mockLineClient.replyMessage).toHaveBeenCalledWith('test-reply-token-unsupported', {
+        type: 'text',
+        text: 'ขออภัยครับ บอทยังไม่รองรับข้อความประเภทนี้ในตอนนี้ 🙏'
+      })
     })
 
-    const response = await app.handle(request)
-    const result = await response.json()
+    it('should handle audio message - reply immediately and process async', async () => {
+      const event = createMessageEvent('audio', 'test-audio-message-id', 'user', 'test-user-id', 'test-reply-token-audio', 10000)
+      const payload = createWebhookPayload([event])
+      const body = JSON.stringify(payload)
+      const signature = createLineSignature(body)
 
-    expect(response.status).toBe(200)
-    expect(result.status).toBe('ok')
-    
-    expect(mockJobService.createJob).toHaveBeenCalledTimes(1)
-    expect(mockJobService.createJob).toHaveBeenCalledWith({
-      messageId: 'test-audio-message-id',
-      userId: 'test-user-id',
-      replyToken: 'test-reply-token-audio'
-    })
-    
-    expect(mockLineClient.replyMessage).toHaveBeenCalledTimes(1)
-    expect(mockLineClient.replyMessage).toHaveBeenCalledWith('test-reply-token-audio', {
-      type: 'text',
-      text: '🎵 กำลังแปลงเสียงเป็นข้อความ กรุณารอสักครู่ครับ...'
-    })
-    
-    await new Promise(resolve => setTimeout(resolve, 100))
-  })
+      const request = new Request('http://localhost/webhook', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-line-signature': signature,
+        },
+        body,
+      })
 
-  it('should handle text message without replyToken', async () => {
-    const event = createMessageEvent('text', 'test-message-id', 'user', 'test-user-id', undefined, 'Hello')
-    const payload = createWebhookPayload([event])
-    const body = JSON.stringify(payload)
-    const signature = createLineSignature(body)
+      const response = await app.handle(request)
+      const result = await response.json()
 
-    const request = new Request('http://localhost/webhook', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-line-signature': signature,
-      },
-      body,
-    })
-
-    const response = await app.handle(request)
-    const result = await response.json()
-
-    expect(response.status).toBe(200)
-    expect(result.status).toBe('ok')
-    expect(mockLineClient.replyMessage).toHaveBeenCalledTimes(0)
-  })
-
-  it('should handle text message that is not "สวัสดี"', async () => {
-    const event = createMessageEvent('text', 'test-message-id', 'user', 'test-user-id', 'test-reply-token-other', 'Hello World')
-    const payload = createWebhookPayload([event])
-    const body = JSON.stringify(payload)
-    const signature = createLineSignature(body)
-
-    const request = new Request('http://localhost/webhook', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-line-signature': signature,
-      },
-      body,
+      expect(response.status).toBe(200)
+      expect(result.status).toBe('ok')
+      
+      expect(mockJobService.createJob).toHaveBeenCalledTimes(1)
+      expect(mockJobService.createJob).toHaveBeenCalledWith({
+        messageId: 'test-audio-message-id',
+        userId: 'test-user-id',
+        replyToken: 'test-reply-token-audio'
+      })
+      
+      expect(mockLineClient.replyMessage).toHaveBeenCalledTimes(1)
+      expect(mockLineClient.replyMessage).toHaveBeenCalledWith('test-reply-token-audio', {
+        type: 'text',
+        text: '🎵 กำลังแปลงเสียงเป็นข้อความ กรุณารอสักครู่ครับ...'
+      })
+      
+      await new Promise(resolve => setTimeout(resolve, 100))
     })
 
-    const response = await app.handle(request)
-    const result = await response.json()
+    it('should handle text message without replyToken', async () => {
+      const event = createMessageEvent('text', 'test-message-id', 'user', 'test-user-id', undefined, 'Hello')
+      const payload = createWebhookPayload([event])
+      const body = JSON.stringify(payload)
+      const signature = createLineSignature(body)
 
-    expect(response.status).toBe(200)
-    expect(result.status).toBe('ok')
-    expect(mockLineClient.replyMessage).toHaveBeenCalledTimes(0)
+      const request = new Request('http://localhost/webhook', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-line-signature': signature,
+        },
+        body,
+      })
+
+      const response = await app.handle(request)
+      const result = await response.json()
+
+      expect(response.status).toBe(200)
+      expect(result.status).toBe('ok')
+      expect(mockLineClient.replyMessage).toHaveBeenCalledTimes(0)
+    })
+
+    it('should handle text message that is not "สวัสดี"', async () => {
+      const event = createMessageEvent('text', 'test-message-id', 'user', 'test-user-id', 'test-reply-token-other', 'Hello World')
+      const payload = createWebhookPayload([event])
+      const body = JSON.stringify(payload)
+      const signature = createLineSignature(body)
+
+      const request = new Request('http://localhost/webhook', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-line-signature': signature,
+        },
+        body,
+      })
+
+      const response = await app.handle(request)
+      const result = await response.json()
+
+      expect(response.status).toBe(200)
+      expect(result.status).toBe('ok')
+      expect(mockLineClient.replyMessage).toHaveBeenCalledTimes(0)
+    })
   })
 
   describe('Audio Processing - pushMessage และ getProfile', () => {
