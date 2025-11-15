@@ -11,6 +11,7 @@ import * as path from 'path'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Client as LineClientType } from '@line/bot-sdk'
 import type { AudioProcessingResult } from './src/services/audioService'
+import type { TranscriptionJob } from './src/services/jobService' // Import TranscriptionJob
 
 const SECRET_FILES_PATH = '/etc/secrets'
 const TEMP_DIR = path.join(process.cwd(), 'temp')
@@ -169,7 +170,6 @@ export function createApp(services: AppServices) {
       processAudioAsync(
         event.message.id,
         job.id,
-        event.source.userId,
         event.timestamp
       ).catch(error => {
         console.error('❌ Uncaught error in processAudioAsync:', error)
@@ -199,7 +199,6 @@ export function createApp(services: AppServices) {
   async function processAudioAsync(
     messageId: string,
     jobId: string,
-    userId: string | undefined, // Allow userId to be undefined
     timestamp: number
   ) {
     let result: AudioProcessingResult | undefined
@@ -207,6 +206,7 @@ export function createApp(services: AppServices) {
     let replyToken: string | undefined
     let groupId: string | undefined
     let roomId: string | undefined
+    let job: TranscriptionJob; // Declare job as non-nullable here, but without initial assignment
 
     try {
       console.log(`🔄 Processing audio ${messageId} for job ${jobId}`)
@@ -215,11 +215,12 @@ export function createApp(services: AppServices) {
       await jobService.updateJob(jobId, { status: 'PROCESSING' })
 
       // Retrieve the job to get the replyToken and source IDs for error handling
-      const job = await jobService.getJob(jobId)
-      if (!job) {
+      const retrievedJob = await jobService.getJob(jobId)
+      if (!retrievedJob) {
         console.error(`❌ Job ${jobId} not found.`)
         return
       }
+      job = retrievedJob; // Assign to the non-nullable 'job' variable after the null check
       
       replyToken = job.reply_token
       groupId = job.group_id
@@ -245,12 +246,26 @@ export function createApp(services: AppServices) {
 
       // Get user profile for personalized message
       let displayName = 'ผู้ใช้'
-      if (userId) { // Only try to get profile if userId is defined
+      if (job.group_id && job.user_id) {
         try {
-          const userProfile = await lineClient.getProfile(userId)
+          const memberProfile = await lineClient.getGroupMemberProfile(job.group_id, job.user_id)
+          displayName = memberProfile.displayName
+        } catch (error) {
+          console.error(`Failed to get group member profile for user ${job.user_id} in group ${job.group_id}:`, error)
+        }
+      } else if (job.room_id && job.user_id) {
+        try {
+          const memberProfile = await lineClient.getRoomMemberProfile(job.room_id, job.user_id)
+          displayName = memberProfile.displayName
+        } catch (error) {
+          console.error(`Failed to get room member profile for user ${job.user_id} in room ${job.room_id}:`, error)
+        }
+      } else if (job.user_id) {
+        try {
+          const userProfile = await lineClient.getProfile(job.user_id)
           displayName = userProfile.displayName
         } catch (error) {
-          console.error(`Failed to get profile for user ${userId}:`, error)
+          console.error(`Failed to get profile for user ${job.user_id}:`, error)
         }
       }
 
@@ -292,7 +307,7 @@ export function createApp(services: AppServices) {
       // ส่งข้อความแจ้งข้อผิดพลาดเมื่อเกิดข้อผิดพลาดใน processAudioAsync
       await sendErrorMessage(
         replyToken,
-        userId,
+        job.user_id, // Use job.user_id here
         groupId,
         roomId,
         'ไม่สามารถแปลงเสียงเป็นข้อความได้ กรุณาลองใหม่อีกครั้ง'
