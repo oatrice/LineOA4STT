@@ -61,6 +61,8 @@ jobs:
           LINE_CHANNEL_ACCESS_TOKEN: ${{ secrets.LINE_CHANNEL_ACCESS_TOKEN || 'test-token' }}
           SUPABASE_URL: ${{ secrets.SUPABASE_URL || 'https://test.supabase.co' }}
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY || 'test-key' }}
+          AZURE_SPEECH_KEY: ${{ secrets.AZURE_SPEECH_KEY || 'test-key' }}
+          AZURE_SPEECH_REGION: ${{ secrets.AZURE_SPEECH_REGION || 'test-region' }}
 
   # ===============================================
   # DEPLOY JOBS (รันเฉพาะตอน Push และ CI ผ่าน)

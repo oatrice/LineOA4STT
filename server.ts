@@ -1,3 +1,4 @@
+import 'dotenv/config'; // Load environment variables
 import initializeApp from './index' // Import the default export
 
 async function main() {

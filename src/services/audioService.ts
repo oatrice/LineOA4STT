@@ -22,6 +22,7 @@ async function streamToBuffer(stream: Readable): Promise<Buffer> {
 export interface AudioProcessingResult {
   transcript: string
   confidence: number
+  provider: 'azure' | 'google' // Add provider field
   audioFilePath: string
   convertedAudioPath: string
 }
@@ -80,32 +81,46 @@ export class AudioService {
     let convertedAudioPath: string | undefined
 
     try {
+      console.log(`[AudioService] Starting processAudio for messageId: ${messageId}`)
+
       // 1. Download audio from Line
+      console.log(`[AudioService] Downloading audio for messageId: ${messageId}`)
       const audioBuffer = await this.downloadAudio(messageId)
+      console.log(`[AudioService] Audio downloaded. Buffer size: ${audioBuffer.length} bytes`)
 
       // 2. Save to temporary file
       await fs.mkdir(tempDir, { recursive: true })
       audioFilePath = path.join(tempDir, `${messageId}.m4a`)
+      console.log(`[AudioService] Saving audio to: ${audioFilePath}`)
       await fs.writeFile(audioFilePath, audioBuffer)
+      console.log(`[AudioService] Audio saved to: ${audioFilePath}`)
 
       // 3. Convert to WAV
       convertedAudioPath = path.join(tempDir, `${messageId}.wav`)
+      console.log(`[AudioService] Converting audio from ${audioFilePath} to ${convertedAudioPath}`)
       await this.convertAudioToWav(audioFilePath, convertedAudioPath)
+      console.log(`[AudioService] Audio converted to: ${convertedAudioPath}`)
 
       // 4. Transcribe using STT
+      console.log(`[AudioService] Transcribing audio using STTService for: ${convertedAudioPath}`)
       const sttResult = await this.sttService.transcribeAudio(
         convertedAudioPath,
         {
           languageCode: options.languageCode || 'th-TH',
         }
       )
+      console.log(`[AudioService] STT transcription completed. Provider: ${sttResult.provider}`)
 
       return {
         transcript: sttResult.transcript,
         confidence: sttResult.confidence,
+        provider: sttResult.provider, // Pass the provider from STTResult
         audioFilePath,
         convertedAudioPath,
       }
+    } catch (error) {
+      console.error(`[AudioService] Error in processAudio for messageId ${messageId}:`, error)
+      throw error // Re-throw the error so it can be caught by processAudioAsync
     } finally {
       // Ensure cleanup happens regardless of success or failure
       // The cleanup is now handled by the caller (index.ts) to avoid premature deletion
