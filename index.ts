@@ -203,10 +203,10 @@ export function createApp(services: AppServices) {
   ) {
     let result: AudioProcessingResult | undefined
     let processingError: Error | undefined
-    let replyToken: string | undefined
-    let groupId: string | undefined
-    let roomId: string | undefined
-    let job: TranscriptionJob; // Declare job as non-nullable here, but without initial assignment
+    let replyToken: string | undefined = undefined
+    let groupId: string | undefined = undefined
+    let roomId: string | undefined = undefined
+    let job: TranscriptionJob | undefined = undefined // Declare job as nullable and initialize to undefined
 
     try {
       console.log(`🔄 Processing audio ${messageId} for job ${jobId}`)
@@ -307,7 +307,7 @@ export function createApp(services: AppServices) {
       // ส่งข้อความแจ้งข้อผิดพลาดเมื่อเกิดข้อผิดพลาดใน processAudioAsync
       await sendErrorMessage(
         replyToken,
-        job.user_id, // Use job.user_id here
+        job?.user_id, // Use optional chaining to safely access user_id
         groupId,
         roomId,
         'ไม่สามารถแปลงเสียงเป็นข้อความได้ กรุณาลองใหม่อีกครั้ง'
