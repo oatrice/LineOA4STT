@@ -7,7 +7,7 @@ export interface TranscriptionJob {
   reply_token?: string
   group_id?: string
   room_id?: string
-  status: 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'FAILED'
+  status: 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'FAILED' | 'TIMEOUT'
   transcript?: string
   confidence?: number
   provider?: string
@@ -16,6 +16,8 @@ export interface TranscriptionJob {
   created_at?: string
   updated_at?: string
   completed_at?: string
+  retry_count?: number
+  previous_job_id?: string
 }
 
 export interface CreateJobParams {
@@ -24,16 +26,19 @@ export interface CreateJobParams {
   replyToken?: string
   groupId?: string
   roomId?: string
+  retryCount?: number
+  previousJobId?: string
 }
 
 export interface UpdateJobParams {
-  status?: 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'FAILED'
+  status?: 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'FAILED' | 'TIMEOUT'
   transcript?: string
   confidence?: number
   provider?: string
   audio_file_path?: string
   error_message?: string
   completed_at?: string
+  retry_count?: number
 }
 
 export class JobService {
@@ -49,6 +54,8 @@ export class JobService {
         group_id: params.groupId,
         room_id: params.roomId,
         status: 'PENDING',
+        retry_count: params.retryCount || 0,
+        previous_job_id: params.previousJobId,
       })
       .select()
       .single()
@@ -98,6 +105,23 @@ export class JobService {
 
     if (error) {
       throw new Error(`Failed to get pending jobs: ${error.message}`)
+    }
+
+    return (data || []) as TranscriptionJob[]
+  }
+
+  async getJobsForWorker(limit: number = 10, processingTimeoutMinutes: number = 5): Promise<TranscriptionJob[]> {
+    const timeoutThreshold = new Date(Date.now() - processingTimeoutMinutes * 60 * 1000).toISOString();
+
+    const { data, error } = await this.supabase
+      .from('transcription_jobs')
+      .select()
+      .or(`status.eq.PENDING,and(status.eq.PROCESSING,updated_at.lt.${timeoutThreshold})`)
+      .order('created_at', { ascending: true })
+      .limit(limit)
+
+    if (error) {
+      throw new Error(`Failed to get jobs for worker: ${error.message}`)
     }
 
     return (data || []) as TranscriptionJob[]
