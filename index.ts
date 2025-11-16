@@ -13,7 +13,7 @@ import type { Client as LineClientType } from '@line/bot-sdk'
 import type { AudioProcessingResult } from './src/services/audioService'
 import type { TranscriptionJob } from './src/services/jobService' // Import TranscriptionJob
 
-const SECRET_FILES_PATH = '/etc/secrets'
+const SECRET_FILES_PATH = process.env.LOCAL_SECRET_DIR || '/etc/secrets'
 const TEMP_DIR = path.join(process.cwd(), 'temp')
 
 // TypeBox schemas สำหรับ Line webhook payload validation
@@ -477,33 +477,87 @@ async function readSecretFile(filename: string): Promise<string | undefined> {
 }
 
 async function initializeApp() {
+  // Helper to read secret from file or env
+  async function getSecret(filename: string, envVarName: string, fileEnvVarName: string): Promise<string | undefined> {
+    let secret: string | undefined
+    // 1. Try to read from file path specified by environment variable (e.g., LOCAL_SECRET_DIR/filename or explicit _FILE env var)
+    const explicitFileEnvPath = process.env[fileEnvVarName]
+    if (explicitFileEnvPath) {
+      try {
+        secret = await fs.readFile(explicitFileEnvPath, 'utf8')
+        console.log(`✅ Secret '${filename}' loaded from explicit file path env var: ${explicitFileEnvPath}`)
+        return secret.trim()
+      } catch (error) {
+        console.warn(`⚠️ Could not read secret '${filename}' from explicit file path env var ${explicitFileEnvPath}:`, error)
+      }
+    }
+
+    // 2. Try to read from default secret file path (SECRET_FILES_PATH/filename)
+    secret = await readSecretFile(filename)
+    if (secret) {
+      console.log(`✅ Secret '${filename}' loaded from default secret file: ${path.join(SECRET_FILES_PATH, filename)}`)
+      return secret.trim()
+    }
+
+    // 3. Fallback to direct environment variable
+    secret = process.env[envVarName]
+    if (secret) {
+      console.log(`✅ Secret '${filename}' loaded from environment variable: ${envVarName}`)
+      return secret.trim()
+    }
+    return undefined
+  }
+
   // Read environment variables and secret files
-  const LINE_CHANNEL_SECRET =
-    (await readSecretFile('LINE_CHANNEL_SECRET')) ||
-    process.env.LINE_CHANNEL_SECRET ||
-    'your-line-channel-secret'
+  const LINE_CHANNEL_SECRET = (await getSecret(
+    'LINE_CHANNEL_SECRET',
+    'LINE_CHANNEL_SECRET',
+    'LINE_CHANNEL_SECRET_FILE'
+  )) || 'your-line-channel-secret' // Fallback for local dev if all else fails
 
-  const LINE_CHANNEL_ACCESS_TOKEN =
-    (await readSecretFile('LINE_CHANNEL_ACCESS_TOKEN')) ||
-    process.env.LINE_CHANNEL_ACCESS_TOKEN ||
-    ''
+  const LINE_CHANNEL_ACCESS_TOKEN = (await getSecret(
+    'LINE_CHANNEL_ACCESS_TOKEN',
+    'LINE_CHANNEL_ACCESS_TOKEN',
+    'LINE_CHANNEL_ACCESS_TOKEN_FILE'
+  )) || ''
 
-  const SUPABASE_URL = process.env.SUPABASE_URL || ''
-  const SUPABASE_ANON_KEY =
-    (await readSecretFile('SUPABASE_ANON_KEY')) ||
-    process.env.SUPABASE_ANON_KEY ||
-    ''
+  const SUPABASE_URL = process.env.SUPABASE_URL || '' // SUPABASE_URL is typically an environment variable
+
+  const SUPABASE_ANON_KEY = (await getSecret(
+    'SUPABASE_ANON_KEY',
+    'SUPABASE_ANON_KEY',
+    'SUPABASE_ANON_KEY_FILE'
+  )) || ''
 
   // Handle Google Application Credentials
   let googleCredentialsPath: string | undefined
   let googleCredentialsJsonContent: string | undefined
 
-  // 1. Try to read GOOGLE_CREDENTIALS_JSON from secret file
-  googleCredentialsJsonContent = await readSecretFile('GOOGLE_CREDENTIALS_JSON')
+  // 1. Try to read from file path specified by environment variable (e.g., LOCAL_SECRET_DIR/filename or explicit _FILE env var)
+  const explicitGoogleCredentialsFileEnvPath = process.env.GOOGLE_CREDENTIALS_JSON_FILE
+  if (explicitGoogleCredentialsFileEnvPath) {
+    try {
+      googleCredentialsJsonContent = await fs.readFile(explicitGoogleCredentialsFileEnvPath, 'utf8')
+      console.log(`✅ Google Credentials loaded from explicit file path env var: ${explicitGoogleCredentialsFileEnvPath}`)
+    } catch (error) {
+      console.warn(`⚠️ Could not read Google Credentials from explicit file path env var ${explicitGoogleCredentialsFileEnvPath}:`, error)
+    }
+  }
 
-  // 2. If not found, try to read GOOGLE_CREDENTIALS_JSON from environment variable
+  // 2. If not found, try to read GOOGLE_CREDENTIALS_JSON from default secret file
+  if (!googleCredentialsJsonContent) {
+    googleCredentialsJsonContent = await readSecretFile('GOOGLE_CREDENTIALS_JSON')
+    if (googleCredentialsJsonContent) {
+      console.log(`✅ Google Credentials loaded from default secret file: ${path.join(SECRET_FILES_PATH, 'GOOGLE_CREDENTIALS_JSON')}`)
+    }
+  }
+
+  // 3. If not found, try to read GOOGLE_CREDENTIALS_JSON from environment variable directly
   if (!googleCredentialsJsonContent) {
     googleCredentialsJsonContent = process.env.GOOGLE_CREDENTIALS_JSON
+    if (googleCredentialsJsonContent) {
+      console.log('✅ Google Credentials loaded from environment variable: GOOGLE_CREDENTIALS_JSON')
+    }
   }
 
   if (googleCredentialsJsonContent) {
@@ -512,7 +566,7 @@ async function initializeApp() {
       googleCredentialsPath = path.join(TEMP_DIR, 'google-credentials.json')
       await fs.writeFile(googleCredentialsPath, googleCredentialsJsonContent, 'utf8')
       process.env.GOOGLE_APPLICATION_CREDENTIALS = googleCredentialsPath
-      console.log('✅ Google Application Credentials set from secret file or environment variable.')
+      console.log('✅ Google Application Credentials set to temp file.')
     } catch (error) {
       console.error('❌ Error writing Google credentials to temp file:', error)
     }
@@ -521,6 +575,16 @@ async function initializeApp() {
     console.log('✅ Google Application Credentials set from existing environment variable.')
   } else {
     console.warn('⚠️ GOOGLE_APPLICATION_CREDENTIALS not found. STT service might fail.')
+  }
+
+  // Ensure essential variables are present before proceeding
+  if (!LINE_CHANNEL_SECRET || !LINE_CHANNEL_ACCESS_TOKEN || !SUPABASE_URL || !SUPABASE_ANON_KEY) {
+    const missing = []
+    if (!LINE_CHANNEL_SECRET) missing.push('LINE_CHANNEL_SECRET')
+    if (!LINE_CHANNEL_ACCESS_TOKEN) missing.push('LINE_CHANNEL_ACCESS_TOKEN')
+    if (!SUPABASE_URL) missing.push('SUPABASE_URL')
+    if (!SUPABASE_ANON_KEY) missing.push('SUPABASE_ANON_KEY')
+    throw new Error(`Missing required environment variables or secrets: ${missing.join(', ')}. Please check your .env file or Render secrets.`)
   }
 
   // Supabase client
