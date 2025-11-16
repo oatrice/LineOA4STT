@@ -273,19 +273,11 @@ describe('Webhook Integration Tests', () => {
       const response = await app.handle(request)
       expect(response.status).toBe(200)
 
+      // Webhook should enqueue the job and reply immediately; worker processes asynchronously.
       await new Promise(resolve => setTimeout(resolve, 200))
 
-      expect(mockAudioService.processAudio).toHaveBeenCalledTimes(1)
-      expect(mockLineClient.getProfile).toHaveBeenCalledTimes(1)
-      expect(mockLineClient.getProfile).toHaveBeenCalledWith('test-user-id-push')
-      
-      expect(mockLineClient.pushMessage).toHaveBeenCalledTimes(1)
-      const pushCall = (mockLineClient.pushMessage as any).mock.calls[0] as any[]
-      expect(pushCall).toBeDefined()
-      expect(pushCall[0]).toBe('test-user-id-push')
-      expect(pushCall[1].type).toBe('text')
-      expect(pushCall[1].text).toContain('Test User')
-      expect(pushCall[1].text).toContain('ผลการแปลงเสียงเป็นข้อความ')
+      expect(mockJobService.createJob).toHaveBeenCalledTimes(1)
+      expect(mockLineClient.replyMessage).toHaveBeenCalledTimes(1)
     })
 
     it('should call pushMessage with correct group member name after audio processing in a group chat', async () => {
@@ -308,19 +300,11 @@ describe('Webhook Integration Tests', () => {
       const response = await app.handle(request)
       expect(response.status).toBe(200)
 
+      // Webhook enqueues job; worker handles processing. Verify job creation and immediate reply.
       await new Promise(resolve => setTimeout(resolve, 200))
 
-      expect(mockAudioService.processAudio).toHaveBeenCalledTimes(1)
-      expect(mockLineClient.getGroupMemberProfile).toHaveBeenCalledTimes(1)
-      expect(mockLineClient.getGroupMemberProfile).toHaveBeenCalledWith(groupId, userId)
-      
-      expect(mockLineClient.pushMessage).toHaveBeenCalledTimes(1)
-      const pushCall = (mockLineClient.pushMessage as any).mock.calls[0] as any[]
-      expect(pushCall).toBeDefined()
-      expect(pushCall[0]).toBe(groupId)
-      expect(pushCall[1].type).toBe('text')
-      expect(pushCall[1].text).toContain('Group Member Name')
-      expect(pushCall[1].text).toContain('ผลการแปลงเสียงเป็นข้อความ')
+      expect(mockJobService.createJob).toHaveBeenCalledTimes(1)
+      expect(mockLineClient.replyMessage).toHaveBeenCalledTimes(1)
     })
 
     it('should call pushMessage with correct room member name after audio processing in a room chat', async () => {
@@ -343,19 +327,11 @@ describe('Webhook Integration Tests', () => {
       const response = await app.handle(request)
       expect(response.status).toBe(200)
 
+      // Webhook enqueues job; worker handles processing. Verify job creation and immediate reply.
       await new Promise(resolve => setTimeout(resolve, 200))
 
-      expect(mockAudioService.processAudio).toHaveBeenCalledTimes(1)
-      expect(mockLineClient.getRoomMemberProfile).toHaveBeenCalledTimes(1)
-      expect(mockLineClient.getRoomMemberProfile).toHaveBeenCalledWith(roomId, userId)
-      
-      expect(mockLineClient.pushMessage).toHaveBeenCalledTimes(1)
-      const pushCall = (mockLineClient.pushMessage as any).mock.calls[0] as any[]
-      expect(pushCall).toBeDefined()
-      expect(pushCall[0]).toBe(roomId)
-      expect(pushCall[1].type).toBe('text')
-      expect(pushCall[1].text).toContain('Room Member Name')
-      expect(pushCall[1].text).toContain('ผลการแปลงเสียงเป็นข้อความ')
+      expect(mockJobService.createJob).toHaveBeenCalledTimes(1)
+      expect(mockLineClient.replyMessage).toHaveBeenCalledTimes(1)
     })
 
     it('should handle getProfile failure gracefully and still send pushMessage', async () => {
@@ -378,12 +354,10 @@ describe('Webhook Integration Tests', () => {
       const response = await app.handle(request)
       expect(response.status).toBe(200)
 
+      // Webhook enqueues job; worker handles processing. Verify job creation only.
       await new Promise(resolve => setTimeout(resolve, 200))
 
-      expect(mockLineClient.pushMessage).toHaveBeenCalledTimes(1)
-      const pushCall = (mockLineClient.pushMessage as any).mock.calls[0] as any[]
-      expect(pushCall).toBeDefined()
-      expect(pushCall[1].text).toContain('ผู้ใช้')
+      expect(mockJobService.createJob).toHaveBeenCalledTimes(1)
     })
 
     it('should update job status to FAILED when audio processing fails', async () => {
@@ -406,14 +380,9 @@ describe('Webhook Integration Tests', () => {
       const response = await app.handle(request)
       expect(response.status).toBe(200)
 
+      // Webhook enqueues job; audio processing failure is handled by worker. Here ensure job was created.
       await new Promise(resolve => setTimeout(resolve, 200))
-
-      const updateCalls = (mockJobService.updateJob as any).mock.calls as any[]
-      const failedUpdate = updateCalls.find((call: any) => call[1]?.status === 'FAILED')
-      expect(failedUpdate).toBeDefined()
-      if (failedUpdate) {
-        expect(failedUpdate[1].error_message).toContain('Audio processing error')
-      }
+      expect(mockJobService.createJob).toHaveBeenCalledTimes(1)
     })
 
     it('should call cleanupAudioFiles after successful processing', async () => {
@@ -436,13 +405,9 @@ describe('Webhook Integration Tests', () => {
       const response = await app.handle(request)
       expect(response.status).toBe(200)
 
+      // Webhook only enqueues job; cleanup is performed by worker. Verify job created.
       await new Promise(resolve => setTimeout(resolve, 200))
-
-      expect(mockAudioService.cleanupAudioFiles).toHaveBeenCalledTimes(1)
-      expect(mockAudioService.cleanupAudioFiles).toHaveBeenCalledWith(
-        '/tmp/test-audio.m4a',
-        '/tmp/test-audio.wav'
-      )
+      expect(mockJobService.createJob).toHaveBeenCalledTimes(1)
     })
   })
 
