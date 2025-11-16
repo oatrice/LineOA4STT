@@ -1,0 +1,36 @@
+name: "PR template check"
+
+on:
+  pull_request:
+    types: [opened, edited, reopened, synchronize]
+
+jobs:
+  check-template:
+    name: Check PR body matches template
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check PR body
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const pr = context.payload.pull_request;
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const issue_number = pr.number;
+            const title = (pr.title || '').trim();
+            const body = (pr.body || '').trim();
+
+            const missing = [];
+            if (!title) missing.push('PR title is empty');
+            if (!body.includes('## 📝 คำอธิบายการเปลี่ยนแปลง')) missing.push('Missing section: "## 📝 คำอธิบายการเปลี่ยนแปลง (Description)"');
+            // check for at least one markdown checklist item (- [ ] or - [x])
+            if (!(/- \[.?\\]/.test(body))) missing.push('Checklist not found (no "- [ ]" items)');
+
+            if (missing.length > 0) {
+              const comment = `สวัสดี 👋\n\nGitHub Action ตรวจพบว่า PR ยังไม่ตรงตามเทมเพลตที่กำหนดไว้:\n\n${missing.map(m => `- ${m}`).join('\n')}\n\nโปรดแก้ไขหัวข้อและ/หรือใส่รายการตรวจสอบตามเทมเพลต (ดูไฟล์ .github/PULL_REQUEST_TEMPLATE.md) แล้ว push commit ใหม่เพื่อให้การตรวจสอบผ่าน`;
+              await github.rest.issues.createComment({ owner, repo, issue_number, body: comment });
+              throw new Error('PR body does not match required template');
+            } else {
+              console.log('PR body matches basic template checks');
+            }
