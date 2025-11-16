@@ -100,16 +100,7 @@ export function createApp(services: AppServices) {
       console.log('😢 Trying to send error message to user...');
       const errorText = `ขออภัยครับ เกิดข้อผิดพลาดในการประมวลผล: ${errorMessage} 🙏`;
       
-      // ถ้ามี replyToken ให้ใช้ replyMessage
-      if (replyToken) {
-        await lineClient.replyMessage(replyToken, {
-          type: 'text',
-          text: errorText,
-        });
-        return;
-      }
-      
-      // ถ้าไม่มี replyToken แต่มี userId, groupId หรือ roomId ให้ใช้ pushMessage
+      // ใช้ pushMessage เสมอเพื่อส่งข้อความแจ้งข้อผิดพลาด เนื่องจาก replyToken อาจหมดอายุได้
       let to: string | undefined;
       if (groupId) {
         to = groupId;
