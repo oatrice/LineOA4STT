@@ -31,8 +31,7 @@ CREATE TABLE IF NOT EXISTS transcription_jobs (
   -- Error handling
   error_message TEXT,
   retry_count INTEGER DEFAULT 0,
-  previous_job_id UUID REFERENCES transcription_jobs(id),
-  retry_count INTEGER DEFAULT 0
+  previous_job_id UUID REFERENCES transcription_jobs(id)
 );
 
 -- เพิ่มคอลัมน์ group_id ถ้ายังไม่มี
