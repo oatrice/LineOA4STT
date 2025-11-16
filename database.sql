@@ -16,7 +16,7 @@ CREATE TABLE IF NOT EXISTS transcription_jobs (
   duration INTEGER,
   
   -- Job status
-  status VARCHAR(50) DEFAULT 'PENDING' CHECK (status IN ('PENDING', 'PROCESSING', 'COMPLETED', 'FAILED')),
+  status VARCHAR(50) DEFAULT 'PENDING' CHECK (status IN ('PENDING', 'PROCESSING', 'COMPLETED', 'FAILED', 'TIMEOUT')),
   
   -- Transcription result
   transcript TEXT,
@@ -30,6 +30,8 @@ CREATE TABLE IF NOT EXISTS transcription_jobs (
   
   -- Error handling
   error_message TEXT,
+  retry_count INTEGER DEFAULT 0,
+  previous_job_id UUID REFERENCES transcription_jobs(id),
   retry_count INTEGER DEFAULT 0
 );
 

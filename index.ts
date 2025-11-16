@@ -154,25 +154,8 @@ export function createApp(services: AppServices) {
         roomId: event.source.roomId,
       })
 
-      console.log(`✅ Created job ${job.id} for message ${event.message.id}`)
+      console.log(`✅ Created job ${job.id} for message ${event.message.id}. It will be processed by a worker.`)
 
-      // 3. เริ่มการประมวลผลแบบ async (ไม่ block webhook response)
-      // ไม่ต้องรอให้ processAudioAsync เสร็จสิ้น เพื่อให้ webhook response กลับไปได้ทันที
-      processAudioAsync(
-        event.message.id,
-        job.id,
-        event.timestamp
-      ).catch(error => {
-        console.error('❌ Uncaught error in processAudioAsync:', error)
-        // ส่งข้อความแจ้งข้อผิดพลาดเมื่อเกิดข้อผิดพลาดใน processAudioAsync
-        sendErrorMessage(
-          event.replyToken,
-          event.source.userId,
-          event.source.groupId,
-          event.source.roomId,
-          'เกิดข้อผิดพลาดในระหว่างการประมวลผลเสียง กรุณาลองใหม่อีกครั้ง'
-        )
-      })
     } catch (error) {
       console.error('❌ Error handling audio message:', error)
       // ส่งข้อความแจ้งข้อผิดพลาดเมื่อเกิดข้อผิดพลาดใน handleAudioMessage
