@@ -19,5 +19,9 @@ COPY . .
 # Expose port
 EXPOSE 3000
 
-# Run the application
-CMD ["bun", "server.ts"]
+# Copy and use entrypoint so container can run web or worker
+COPY entrypoint.sh ./entrypoint.sh
+RUN chmod +x ./entrypoint.sh
+
+# Run the application (entrypoint switches based on PROCESS env var)
+CMD ["./entrypoint.sh"]
