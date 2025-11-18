@@ -18,6 +18,9 @@ jobs:
   lint:
     name: Lint
     runs-on: ubuntu-latest
+    # Run for pull requests OR for pushes to the main branch only
+    # This avoids duplicate CI runs when a push triggers followed by a pull_request event
+    if: github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -36,6 +39,9 @@ jobs:
   test:
     name: Test & Type Check
     runs-on: ubuntu-latest
+    # Run for pull requests OR for pushes to the main branch only
+    # Avoid duplicate runs for the same commit when both push and pull_request fire
+    if: github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
