@@ -1,8 +1,8 @@
-import { createClient, SupabaseClient } from '@supabase/supabase-js'
-import { Client as LineClient } from '@line/bot-sdk'
-import { AudioService } from './services/audioService'
-import { STTService } from './services/sttService'
-import { JobService, type TranscriptionJob, type UpdateJobParams } from './services/jobService'
+import { createClient, type SupabaseClient } from 'npm:@supabase/supabase-js'
+import { Client as LineClient } from 'npm:@line/bot-sdk'
+import { AudioService } from './services/audioService.ts'
+import { STTService } from './services/sttService.ts'
+import { JobService, type TranscriptionJob, type UpdateJobParams } from './services/jobService.ts'
 
 // Define a reasonable concurrency limit to avoid overwhelming the system
 const MAX_CONCURRENT_JOBS = 5

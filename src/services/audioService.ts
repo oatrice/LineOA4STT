@@ -1,22 +1,31 @@
-import { Client } from '@line/bot-sdk'
-import { Readable } from 'stream'
-import { promises as fs } from 'fs'
-import * as path from 'path'
-import { promisify } from 'util'
-import { exec } from 'child_process'
-import { STTService } from './sttService'
-import type { STTResult } from './sttService'
+import { type Client } from 'npm:@line/bot-sdk'
+import { Buffer } from 'https://deno.land/std@0.177.0/io/buffer.ts'
+import * as fs from 'https://deno.land/std@0.177.0/fs/mod.ts'
+import * as path from 'https://deno.land/std@0.177.0/path/mod.ts'
+import { STTService } from './sttService.ts'
+import type { STTResult } from './sttService.ts'
 
-const execPromise = promisify(exec)
+// Helper function to convert a ReadableStream to a Buffer
+async function streamToBuffer(stream: ReadableStream): Promise<Uint8Array> {
+  const reader = stream.getReader()
+  const chunks: Uint8Array[] = []
 
-// Helper function to convert a Readable stream to a Buffer
-async function streamToBuffer(stream: Readable): Promise<Buffer> {
-  return new Promise((resolve, reject) => {
-    const chunks: Buffer[] = []
-    stream.on('data', (chunk) => chunks.push(chunk))
-    stream.on('end', () => resolve(Buffer.concat(chunks)))
-    stream.on('error', reject)
-  })
+  while (true) {
+    const { done, value } = await reader.read()
+    if (done) {
+      break
+    }
+    chunks.push(value)
+  }
+
+  const totalLength = chunks.reduce((acc, chunk) => acc + chunk.length, 0)
+  const buffer = new Uint8Array(totalLength)
+  let offset = 0
+  for (const chunk of chunks) {
+    buffer.set(chunk, offset)
+    offset += chunk.length
+  }
+  return buffer
 }
 
 export interface AudioProcessingResult {
@@ -43,12 +52,15 @@ export class AudioService {
     this.tempDir = path.join(process.cwd(), 'temp_audio')
   }
 
-  async downloadAudio(messageId: string): Promise<Buffer> {
+  async downloadAudio(messageId: string): Promise<Uint8Array> {
     const contentStream = await this.lineClient.getMessageContent(messageId)
-    return await streamToBuffer(contentStream)
+    // The LINE SDK for Node returns a Node stream, but in Deno context, we expect a Web API ReadableStream.
+    // Assuming the SDK adapts or we're using a Deno-compatible version.
+    // If it returns a raw response body, it would be a ReadableStream.
+    return await streamToBuffer(contentStream as unknown as ReadableStream)
   }
 
-  async saveAudioFile(messageId: string, audioBuffer: Buffer): Promise<string> {
+  async saveAudioFile(messageId: string, audioBuffer: Uint8Array): Promise<string> {
     await fs.mkdir(this.tempDir, { recursive: true })
     const audioFilePath = path.join(this.tempDir, `${messageId}.m4a`)
     await fs.writeFile(audioFilePath, audioBuffer)
@@ -59,17 +71,12 @@ export class AudioService {
     inputPath: string,
     outputPath: string
   ): Promise<void> {
-    try {
-      await execPromise(
-        `ffmpeg -y -i "${inputPath}" -acodec pcm_s16le -ar 16000 -ac 1 "${outputPath}"`
-      )
-    } catch (error) {
-      throw new Error(
-        `FFmpeg conversion failed: ${
-          error instanceof Error ? error.message : 'Unknown error'
-        }`
-      )
-    }
+    // IMPORTANT: Spawning subprocesses like ffmpeg is not supported in Supabase Edge Functions.
+    // This function will fail at runtime. The audio conversion logic must be handled
+    // outside the Edge Function, for example, in your main web service before creating the job,
+    // or by another dedicated service.
+    console.error("FATAL: ffmpeg execution is not supported in this environment.")
+    throw new Error("Audio conversion via ffmpeg is not supported in Supabase Edge Functions.")
   }
 
   async processAudio(
@@ -103,8 +110,9 @@ export class AudioService {
 
       // 4. Transcribe using STT
       console.log(`[AudioService] Transcribing audio using STTService for: ${convertedAudioPath}`)
-      const sttResult = await this.sttService.transcribeAudio(
-        convertedAudioPath,
+      const audioBufferForStt = await Deno.readFile(convertedAudioPath)
+      const sttResult = await this.sttService.transcribeAudioBuffer(
+        audioBufferForStt,
         {
           languageCode: options.languageCode || 'th-TH',
         }
