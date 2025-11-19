@@ -296,66 +296,132 @@ async function processAudioJob(job: TranscriptionJob, services: Awaited<ReturnTy
   }
 }
 
-async function startWorker() {
-  console.log('🚀 Starting transcription worker...');
-  const services = await initializeServices();
-  const { jobService } = services;
+// New runWorker function for one-shot execution
+import { createClient, SupabaseClient } from '@supabase/supabase-js'
+import { Client as LineClient } from '@line/bot-sdk'
+import { AudioService } from './src/services/audioService'
+import { STTService } from './src/services/sttService'
+import { JobService, TranscriptionJob, UpdateJobParams } from './src/services/jobService'
 
-  const POLLING_INTERVAL_MS = 5000; // Poll every 5 seconds
-  const PROCESSING_TIMEOUT_MINUTES = 5; // Re-process jobs stuck in PROCESSING after 5 minutes
+// Ensure environment variables are loaded if not already (for local testing)
+import 'dotenv/config'
 
-  while (true) {
-    try {
-      // Fetch PENDING jobs and PROCESSING jobs that have timed out
-      const jobsToProcess: TranscriptionJob[] = await jobService.getJobsForWorker(10, PROCESSING_TIMEOUT_MINUTES);
+const SUPABASE_URL = process.env.SUPABASE_URL!
+const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY!
+const LINE_CHANNEL_ACCESS_TOKEN = process.env.LINE_CHANNEL_ACCESS_TOKEN!
+const LINE_CHANNEL_SECRET = process.env.LINE_CHANNEL_SECRET!
 
-      if (jobsToProcess && jobsToProcess.length > 0) {
-        console.log(`🔎 Found ${jobsToProcess.length} jobs to process. Processing...`);
-        for (const job of jobsToProcess) {
-          if (job.status === 'PROCESSING') {
-            console.log(`⚠️ Job ${job.id} (message: ${job.message_id}) was stuck in PROCESSING for too long. Marking as TIMEOUT and re-queuing...`);
+// Initialize Supabase Client
+const supabase: SupabaseClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
 
-            // 1. Update the original job to TIMEOUT status
-            await jobService.updateJob(job.id, {
-              status: 'TIMEOUT',
-              error_message: 'Processing timed out. Re-queued.',
-            });
+// Initialize Line Client
+const lineClient = new LineClient({
+  channelAccessToken: LINE_CHANNEL_ACCESS_TOKEN,
+  channelSecret: LINE_CHANNEL_SECRET,
+})
 
-            // 2. Create a new job record for re-processing
-            const newJob = await jobService.createJob({
-              messageId: `${job.message_id}_retry_${(job.retry_count || 0) + 1}`,
-              userId: job.user_id,
-              replyToken: job.reply_token,
-              groupId: job.group_id,
-              roomId: job.room_id,
-              retryCount: (job.retry_count || 0) + 1,
-              previousJobId: job.id, // Reference the original job
-            });
-            console.log(`✅ Created new job ${newJob.id} for re-processing (original: ${job.id}, retry_count: ${newJob.retry_count}).`);
-            continue; // Skip immediate processing of this timed-out job, let the new job be picked up naturally
-          }
-          
-          try {
-            await processAudioJob(job, services);
-          } catch (jobError) {
-            console.error(`❌ Error processing job ${job.id}, but worker will continue.`, jobError);
-            await services.jobService.updateJob(job.id, {
-              status: 'FAILED',
-              error_message: 'Worker caught an unhandled exception during re-processing.',
-            });
-          }
-        }
-      } else {
-        console.log('😴 No pending or timed-out jobs found. Waiting...');
-      }
-    } catch (workerError) {
-      console.error('❌ Uncaught error in worker loop:', workerError);
+// Initialize Services
+const sttService = new STTService()
+const audioService = new AudioService(lineClient, sttService)
+const jobService = new JobService(supabase)
+
+// Define a reasonable concurrency limit to avoid overwhelming the system
+const MAX_CONCURRENT_JOBS = 5
+
+/**
+ * Processes a single transcription job.
+ * @param job The transcription job to process.
+ */
+async function processJob(job: TranscriptionJob): Promise<void> {
+  console.log(`[Worker] Processing job: ${job.id} (Message ID: ${job.message_id})`)
+
+  let updateParams: UpdateJobParams = { status: 'FAILED' } // Default to FAILED
+
+  try {
+    // 1. Update job status to PROCESSING
+    await jobService.updateJob(job.id, { status: 'PROCESSING' })
+
+    // 2. Process audio (download, convert, transcribe)
+    const { transcript, confidence, provider, audioFilePath, convertedAudioPath } =
+      await audioService.processAudio(job.message_id)
+
+    // 3. Update job with transcription results
+    updateParams = {
+      status: 'COMPLETED',
+      transcript,
+      confidence,
+      provider,
+      audio_file_path: audioFilePath,
+      completed_at: new Date().toISOString(),
     }
-    await new Promise(resolve => setTimeout(resolve, POLLING_INTERVAL_MS));
+    await jobService.updateJob(job.id, updateParams)
+
+    console.log(`[Worker] Successfully processed job: ${job.id}. Transcript: "${transcript.substring(0, 50)}..."`)
+
+    // 4. Clean up temporary audio files
+    await audioService.cleanupAudioFiles(audioFilePath, convertedAudioPath)
+  } catch (error) {
+    console.error(`[Worker] Error processing job ${job.id}:`, error)
+    updateParams = {
+      status: 'FAILED',
+      error_message: error instanceof Error ? error.message : 'Unknown error',
+      completed_at: new Date().toISOString(),
+    }
+    await jobService.updateJob(job.id, updateParams)
+    throw error // Re-throw to signal individual job failure
   }
 }
 
-startWorker().catch(error => {
-  console.error('❌ Worker failed to start:', error);
-  process.exit(1);
-});
+/**
+ * Fetches and processes pending transcription jobs in a one-shot execution.
+ * This function is designed to be called by a Supabase Edge Function (Scheduled Job).
+ */
+export async function runWorker() {
+  console.log('Worker starting to process pending jobs...')
+
+  try {
+    const jobs = await jobService.getJobsForWorker(MAX_CONCURRENT_JOBS)
+
+    if (!jobs || jobs.length === 0) {
+      console.log('No pending or timed-out processing jobs found. Worker exiting.')
+      return { status: 200, message: 'No pending jobs to process.' }
+    }
+
+    console.log(`Found ${jobs.length} pending or timed-out processing jobs.`)
+
+    // Process jobs in parallel with Promise.allSettled to handle individual failures
+    const results = await Promise.allSettled(jobs.map((job) => processJob(job)))
+
+    let processedCount = 0
+    let failedCount = 0
+    results.forEach((result, index) => {
+      if (result.status === 'fulfilled') {
+        processedCount++
+      } else {
+        failedCount++
+        // Ensure job is not undefined before accessing its id
+        if (jobs && jobs[index]) {
+          console.error(`Job ${jobs[index].id} failed to process:`, result.reason)
+        } else {
+          console.error(`An unknown job failed to process:`, result.reason)
+        }
+      }
+    })
+
+    console.log(
+      `Job processing round finished. Successfully processed: ${processedCount}, Failed: ${failedCount}`,
+    )
+    return {
+      status: 200,
+      message: `Processed ${processedCount} jobs, ${failedCount} failed.`,
+    }
+  } catch (err) {
+    console.error('An unexpected error occurred during worker execution:', err)
+    // For Edge Functions, return an error status
+    return {
+      status: 500,
+      message: `Worker encountered an unhandled error: ${err instanceof Error ? err.message : 'Unknown error'
+        }`,
+    }
+  }
+}
