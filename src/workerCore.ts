@@ -1,5 +1,5 @@
-import { createClient, type SupabaseClient } from 'npm:@supabase/supabase-js'
-import { Client as LineClient } from 'npm:@line/bot-sdk'
+import { createClient, type SupabaseClient } from '@supabase/supabase-js'
+import { Client as LineClient } from '@line/bot-sdk'
 import { AudioService } from './services/audioService.ts'
 import { STTService } from './services/sttService.ts'
 import { JobService, type TranscriptionJob, type UpdateJobParams } from './services/jobService.ts'

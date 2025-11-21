@@ -1,5 +1,5 @@
-import * as sdk from 'npm:microsoft-cognitiveservices-speech-sdk'
-import { SpeechClient, protos } from 'npm:@google-cloud/speech'
+import * as sdk from 'microsoft-cognitiveservices-speech-sdk'
+import { SpeechClient, protos } from '@google-cloud/speech'
 import { Buffer } from 'node:buffer'
 
 const GoogleAudioEncoding = protos.google.cloud.speech.v1.RecognitionConfig.AudioEncoding
@@ -21,10 +21,9 @@ export class STTService {
   private googleSpeechClient: SpeechClient | null = null
 
   constructor() {
-    // In Deno/Edge Functions, credentials must be supplied via environment variables.
-    // File system access is restricted.
-    const azureSpeechKey = Deno.env.get('AZURE_SPEECH_KEY')
-    const azureSpeechRegion = Deno.env.get('AZURE_SPEECH_REGION')
+    // In Bun/Node.js, credentials are typically supplied via environment variables.
+    const azureSpeechKey = Bun.env.AZURE_SPEECH_KEY
+    const azureSpeechRegion = Bun.env.AZURE_SPEECH_REGION
 
     if (azureSpeechKey && azureSpeechRegion) {
       this.azureSpeechConfig = sdk.SpeechConfig.fromSubscription(
@@ -39,7 +38,7 @@ export class STTService {
 
     // For Google Cloud, the SDK typically uses GOOGLE_APPLICATION_CREDENTIALS.
     // In a serverless environment, this should be the JSON content of the service account key.
-    const googleCredentialsJson = Deno.env.get('GOOGLE_CREDENTIALS_JSON')
+    const googleCredentialsJson = Bun.env.GOOGLE_CREDENTIALS_JSON
     if (googleCredentialsJson) {
       try {
         const credentials = JSON.parse(googleCredentialsJson)
@@ -80,7 +79,7 @@ export class STTService {
         const recognizer = new sdk.SpeechRecognizer(currentAzureSpeechConfig, audioConfig)
 
         azureResult = await new Promise<STTResult>((resolve, reject) => {
-          recognizer.canceled = (s, e) => {
+          recognizer.canceled = (s: sdk.Recognizer, e: sdk.SpeechRecognitionCanceledEventArgs) => {
             console.error(`Azure STT CANCELED: Reason=${e.reason}`)
             if (e.reason === sdk.CancellationReason.Error) {
               console.error(`Azure STT CANCELED: ErrorCode=${e.errorCode}`)
@@ -90,13 +89,13 @@ export class STTService {
             recognizer.close()
           }
 
-          recognizer.sessionStopped = (s, e) => {
+          recognizer.sessionStopped = (s: sdk.Recognizer, e: sdk.SessionEventArgs) => {
             console.log('Azure STT Session stopped event.')
             recognizer.close()
           }
 
           recognizer.recognizeOnceAsync(
-            (result) => {
+            (result: sdk.SpeechRecognitionResult) => {
               if (result.reason === sdk.ResultReason.RecognizedSpeech) {
                 console.log(`[STTService] Azure recognized speech: ${result.text}`)
                 const transcript = result.text
@@ -110,7 +109,7 @@ export class STTService {
               }
               recognizer.close();
             },
-            (err) => {
+            (err: string) => {
               reject(new Error(`Azure STT Error: ${err}`))
               recognizer.close();
             }

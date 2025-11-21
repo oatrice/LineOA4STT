@@ -354,73 +354,48 @@ export function createApp(services: AppServices) {
         
         console.log(`📨 Received ${webhookData.events.length} events from ${webhookData.destination}`)
         
-        // Process events
-        for (const event of webhookData.events) {
-          console.log(`🔍 Processing event type: ${event.type}`)
-          
-          if (event.type === 'message' && event.message) {
-            switch (event.message.type) {
-              case 'text':
-                // --- START: เพิ่ม Logic การตอบกลับข้อความ ---
-                try {
+        // Process events concurrently and settle all promises
+        const eventPromises = webhookData.events.map(async (event) => {
+          try {
+            console.log(`🔍 Processing event type: ${event.type}`)
+
+            if (event.type === 'message' && event.message) {
+              switch (event.message.type) {
+                case 'text':
                   if (event.message.text === 'สวัสดี' && event.replyToken) {
                     await lineClient.replyMessage(event.replyToken, {
                       type: 'text',
                       text: 'สวัสดีครับ! มีอะไรให้ช่วยไหมครับ?'
                     });
                   }
-                } catch (error) {
-                  console.error('❌ Error handling text message:', error);
-                  // ส่งข้อความแจ้งข้อผิดพลาดสำหรับข้อความ
-                  await sendErrorMessage(
-                    event.replyToken,
-                    event.source.userId,
-                    event.source.groupId,
-                    event.source.roomId,
-                    'เกิดข้อผิดพลาดในการตอบกลับข้อความ'
-                  );
-                }
-                // --- END: เพิ่ม Logic การตอบกลับข้อความ ---
-                console.log(`💬 Text message: ${event.message.text}`)
-                break
-              case 'audio':
-                console.log(`🎵 Audio message: ${event.message.id}`)
-                try {
+                  console.log(`💬 Text message: ${event.message.text}`)
+                  break
+                case 'audio':
+                  console.log(`🎵 Audio message: ${event.message.id}`)
                   await handleAudioMessage(event)
-                } catch (error) {
-                  console.error('❌ Error handling audio message:', error);
-                  // ข้อความแจ้งข้อผิดพลาดจะถูกส่งภายใน handleAudioMessage แล้ว
-                }
-                break
-              case 'image':
-                console.log(`🖼️ Image message: ${event.message.id}`)
-                break
-              default:
-                console.log(`📎 Other message type: ${event.message.type}`)
-                try {
+                  break
+                case 'image':
+                  console.log(`🖼️ Image message: ${event.message.id}`)
+                  break
+                default:
+                  console.log(`📎 Other message type: ${event.message.type}`)
                   if (event.replyToken) {
                     await lineClient.replyMessage(event.replyToken, {
                       type: 'text',
                       text: 'ขออภัยครับ บอทยังไม่รองรับข้อความประเภทนี้ในตอนนี้ 🙏'
                     })
                   }
-                } catch (error) {
-                  console.error('❌ Error handling unsupported message type:', error);
-                  // ส่งข้อความแจ้งข้อผิดพลาดสำหรับข้อความที่ไม่รองรับ
-                  await sendErrorMessage(
-                    event.replyToken,
-                    event.source.userId,
-                    event.source.groupId,
-                    event.source.roomId,
-                    'เกิดข้อผิดพลาดในการตอบกลับข้อความ'
-                  );
-                }
-                break
+                  break
+              }
             }
+            // TODO: Add other event types (follow, unfollow, etc.)
+          } catch (error) {
+            console.error(`❌ Failed to process event:`, error);
+            // Error is logged, but processing continues for other events
           }
-          
-          // TODO: Add other event types (follow, unfollow, etc.)
-        }
+        });
+
+        await Promise.allSettled(eventPromises);
         
         // ตอบกลับ Line platform ว่าได้รับ webhook แล้ว
         set.status = 200

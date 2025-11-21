@@ -22,6 +22,12 @@ let app: any
 
 beforeEach(async () => {
   setupMocks()
+  // Ensure mockJobService.createJob uses the configured mockCreateJob
+  mockJobService.createJob = mockCreateJob;
+  
+  // Suppress console.error during tests to prevent misleading test failures
+  vi.spyOn(console, 'error').mockImplementation(() => {});
+
   // Create app with mocked services
   app = createApp({
     lineClient: mockLineClient,
@@ -35,7 +41,7 @@ beforeEach(async () => {
 
 afterEach(() => {
   clearMocks()
-  vi.restoreAllMocks()
+  vi.restoreAllMocks() // Restore all mocks, including console.error
 })
 
 describe('Webhook Integration Tests', () => {
@@ -462,13 +468,13 @@ describe('Webhook Integration Tests', () => {
           message_id: 'test-audio-message-2',
           user_id: 'test-user-id-2',
           status: 'PENDING'
-        }))
+        }));
 
-      const event1 = createMessageEvent('audio', 'test-audio-message-1', 'user', 'test-user-id-1', 'test-reply-token-1', 5000)
-      const event2 = createMessageEvent('audio', 'test-audio-message-2', 'user', 'test-user-id-2', 'test-reply-token-2', 5000)
-      const payload = createWebhookPayload([event1, event2])
-      const body = JSON.stringify(payload)
-      const signature = createLineSignature(body)
+      const event1 = createMessageEvent('audio', 'test-audio-message-1', 'user', 'test-user-id-1', 'test-reply-token-1', 5000);
+      const event2 = createMessageEvent('audio', 'test-audio-message-2', 'user', 'test-user-id-2', 'test-reply-token-2', 5000);
+      const payload = createWebhookPayload([event1, event2]);
+      const body = JSON.stringify(payload);
+      const signature = createLineSignature(body);
 
       const request = new Request('http://localhost/webhook', {
         method: 'POST',
@@ -477,12 +483,32 @@ describe('Webhook Integration Tests', () => {
           'x-line-signature': signature,
         },
         body,
-      })
+      });
 
-      const response = await app.handle(request)
+      const response = await app.handle(request);
       
-      expect(response.status).toBe(200)
-      expect(mockJobService.createJob).toHaveBeenCalledTimes(2)
-    })
+      // Allow async event processing to settle
+      await new Promise(resolve => setTimeout(resolve, 100));
+
+      expect(response.status).toBe(200);
+      // It should be called for both events, even if the first one fails internally.
+      expect(mockJobService.createJob).toHaveBeenCalledTimes(2);
+      // The first call should be for the first event
+      expect(mockJobService.createJob).toHaveBeenCalledWith({
+        messageId: 'test-audio-message-1',
+        userId: 'test-user-id-1',
+        replyToken: 'test-reply-token-1',
+        groupId: undefined,
+        roomId: undefined
+      });
+      // The second call should be for the second event
+      expect(mockJobService.createJob).toHaveBeenCalledWith({
+        messageId: 'test-audio-message-2',
+        userId: 'test-user-id-2',
+        replyToken: 'test-reply-token-2',
+        groupId: undefined,
+        roomId: undefined
+      });
+    });
   })
 })

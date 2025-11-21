@@ -1,31 +1,19 @@
-import { type Client } from 'npm:@line/bot-sdk'
-import { Buffer } from 'https://deno.land/std@0.177.0/io/buffer.ts'
-import * as fs from 'https://deno.land/std@0.177.0/fs/mod.ts'
-import * as path from 'https://deno.land/std@0.177.0/path/mod.ts'
+import { type Client } from '@line/bot-sdk'
+import * as fs from 'node:fs/promises'
+import * as path from 'node:path'
 import { STTService } from './sttService.ts'
 import type { STTResult } from './sttService.ts'
 
-// Helper function to convert a ReadableStream to a Buffer
-async function streamToBuffer(stream: ReadableStream): Promise<Uint8Array> {
-  const reader = stream.getReader()
-  const chunks: Uint8Array[] = []
+import type { Readable } from 'node:stream'
 
-  while (true) {
-    const { done, value } = await reader.read()
-    if (done) {
-      break
-    }
-    chunks.push(value)
+// Helper function to convert a stream to a Buffer
+async function streamToBuffer(stream: Readable | ReadableStream): Promise<Buffer> {
+  const chunks: Buffer[] = []
+  // @ts-ignore
+  for await (const chunk of stream) {
+    chunks.push(Buffer.from(chunk))
   }
-
-  const totalLength = chunks.reduce((acc, chunk) => acc + chunk.length, 0)
-  const buffer = new Uint8Array(totalLength)
-  let offset = 0
-  for (const chunk of chunks) {
-    buffer.set(chunk, offset)
-    offset += chunk.length
-  }
-  return buffer
+  return Buffer.concat(chunks)
 }
 
 export interface AudioProcessingResult {
@@ -52,18 +40,16 @@ export class AudioService {
     this.tempDir = path.join(process.cwd(), 'temp_audio')
   }
 
-  async downloadAudio(messageId: string): Promise<Uint8Array> {
+  async downloadAudio(messageId: string): Promise<Buffer> {
     const contentStream = await this.lineClient.getMessageContent(messageId)
-    // The LINE SDK for Node returns a Node stream, but in Deno context, we expect a Web API ReadableStream.
-    // Assuming the SDK adapts or we're using a Deno-compatible version.
-    // If it returns a raw response body, it would be a ReadableStream.
-    return await streamToBuffer(contentStream as unknown as ReadableStream)
+    // The LINE SDK for Node returns a Node.js Readable stream.
+    return await streamToBuffer(contentStream as Readable)
   }
 
-  async saveAudioFile(messageId: string, audioBuffer: Uint8Array): Promise<string> {
+  async saveAudioFile(messageId: string, audioBuffer: Buffer): Promise<string> {
     await fs.mkdir(this.tempDir, { recursive: true })
     const audioFilePath = path.join(this.tempDir, `${messageId}.m4a`)
-    await fs.writeFile(audioFilePath, audioBuffer)
+    await Bun.write(audioFilePath, audioBuffer)
     return audioFilePath
   }
 
@@ -99,7 +85,7 @@ export class AudioService {
       await fs.mkdir(tempDir, { recursive: true })
       audioFilePath = path.join(tempDir, `${messageId}.m4a`)
       console.log(`[AudioService] Saving audio to: ${audioFilePath}`)
-      await fs.writeFile(audioFilePath, audioBuffer)
+      await Bun.write(audioFilePath, audioBuffer)
       console.log(`[AudioService] Audio saved to: ${audioFilePath}`)
 
       // 3. Convert to WAV
@@ -110,7 +96,12 @@ export class AudioService {
 
       // 4. Transcribe using STT
       console.log(`[AudioService] Transcribing audio using STTService for: ${convertedAudioPath}`)
-      const audioBufferForStt = await Deno.readFile(convertedAudioPath)
+      
+      if (!convertedAudioPath) {
+        throw new Error('convertedAudioPath is not defined before transcribing.')
+      }
+      
+      const audioBufferForStt = await fs.readFile(convertedAudioPath)
       const sttResult = await this.sttService.transcribeAudioBuffer(
         audioBufferForStt,
         {
@@ -118,6 +109,10 @@ export class AudioService {
         }
       )
       console.log(`[AudioService] STT transcription completed. Provider: ${sttResult.provider}`)
+
+      if (!audioFilePath || !convertedAudioPath) {
+        throw new Error('File paths were not generated correctly during processing.')
+      }
 
       return {
         transcript: sttResult.transcript,

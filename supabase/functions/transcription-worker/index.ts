@@ -1,14 +1,14 @@
-import { serve } from 'https://deno.land/std@0.177.0/http/server.ts'
 import { initializeWorkerServices, runWorker } from '../../../src/workerCore.ts'
 
 console.log('Transcription worker function starting up...')
 
-serve(async (req) => {
-  try {
+Bun.serve({
+  async fetch(req) {
+    try {
     // 1. Get required environment variables
-    const SUPABASE_URL = Deno.env.get('SUPABASE_URL')
-    const SUPABASE_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY')
-    const LINE_CHANNEL_ACCESS_TOKEN = Deno.env.get('LINE_CHANNEL_ACCESS_TOKEN')
+    const SUPABASE_URL = Bun.env.SUPABASE_URL
+    const SUPABASE_ANON_KEY = Bun.env.SUPABASE_ANON_KEY
+    const LINE_CHANNEL_ACCESS_TOKEN = Bun.env.LINE_CHANNEL_ACCESS_TOKEN
 
     if (!SUPABASE_URL || !SUPABASE_ANON_KEY || !LINE_CHANNEL_ACCESS_TOKEN) {
       throw new Error('Missing required environment variables for the worker.')
@@ -33,12 +33,13 @@ serve(async (req) => {
     console.error('Unhandled error in Supabase Edge Function:', error)
     return new Response(
       JSON.stringify({
-        message: `Edge function failed: ${error.message}`,
+        message: `Edge function failed: ${(error as Error).message}`,
       }),
       {
         status: 500,
         headers: { 'Content-Type': 'application/json' },
       }
     )
+    }
   }
 })
