@@ -1,5 +1,29 @@
 {
   "compilerOptions": {
-    "lib": ["deno.window"]
+    "lib": ["deno.ns", "deno.window", "deno.unstable"],
+    "strict": true
+  },
+  "imports": {
+    "https://deno.land/std@0.177.0/io/buffer.ts": "https://deno.land/std@0.177.0/io/buffer.ts",
+    "https://deno.land/std@0.177.0/fs/mod.ts": "https://deno.land/std@0.177.0/fs/mod.ts",
+    "https://deno.land/std@0.177.0/path/mod.ts": "https://deno.land/std@0.177.0/path/mod.ts",
+    "https://deno.land/std@0.177.0/http/server.ts": "https://deno.land/std@0.177.0/http/server.ts",
+    "npm:@line/bot-sdk": "npm:@line/bot-sdk",
+    "npm:@supabase/supabase-js": "npm:@supabase/supabase-js",
+    "npm:microsoft-cognitiveservices-speech-sdk": "npm:microsoft-cognitiveservices-speech-sdk",
+    "npm:@google-cloud/speech": "npm:@google-cloud/speech"
+  },
+  "lint": {
+    "rules": {
+      "tags": ["recommended"]
+    }
+  },
+  "fmt": {
+    "options": {
+      "useTabs": false,
+      "lineWidth": 80,
+      "indentWidth": 2,
+      "singleQuote": true
+    }
   }
 }
