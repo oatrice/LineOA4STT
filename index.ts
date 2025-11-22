@@ -156,6 +156,28 @@ export function createApp(services: AppServices) {
 
       console.log(`✅ Created job ${job.id} for message ${event.message.id}. It will be processed by a worker.`)
 
+      // 3. เรียก Supabase Edge Function (worker) ให้ประมวลผล job
+      const WORKER_URL = process.env.SUPABASE_WORKER_URL;
+      if (!WORKER_URL) {
+        throw new Error('SUPABASE_WORKER_URL environment variable is not set.');
+      }
+      console.log(`📡 Triggering Supabase worker at ${WORKER_URL} for job ${job.id}`);
+
+      // ส่ง HTTP request ไปยัง worker โดยไม่ต้องรอ response เพื่อให้ webhook ตอบกลับได้เร็ว
+      fetch(WORKER_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          // อาจจะเพิ่ม Authorization header ถ้า worker ต้องการการยืนยันตัวตน
+          // 'Authorization': `Bearer ${process.env.SUPABASE_WORKER_AUTH_TOKEN}`,
+        },
+        // ถ้า worker ต้องการข้อมูล job_id ใน body, สามารถเพิ่มได้ดังนี้:
+        // body: JSON.stringify({ jobId: job.id }),
+      }).catch(workerError => {
+        console.error(`❌ Failed to trigger Supabase worker for job ${job.id}:`, workerError);
+        // การไม่สามารถเรียก worker ได้ไม่ควรหยุดการทำงานหลักของ webhook
+      });
+
     } catch (error) {
       console.error('❌ Error handling audio message:', error)
       // ส่งข้อความแจ้งข้อผิดพลาดเมื่อเกิดข้อผิดพลาดใน handleAudioMessage
