@@ -40,14 +40,34 @@ export class AudioService {
   }
 
   async downloadAudio(messageId: string): Promise<Uint8Array> {
-    const contentStream = await this.lineClient.getMessageContent(messageId)
-    // The LINE SDK for Node returns a Node.js Readable stream.
-    // Deno's Web Streams API is more compatible.
-    // We need to convert Node.js Readable to Deno-compatible ReadableStream then to Uint8Array.
-    // This conversion might be tricky in Deno directly if the SDK provides Node.js streams.
-    // For Supabase Edge Functions, this interaction needs careful handling.
-    // Assuming contentStream can be treated as a ReadableStream (web standard).
-    return await readerToUint8Array(contentStream as Deno.Reader)
+    try {
+      const contentStream = await this.lineClient.getMessageContent(messageId)
+      // The LINE SDK for Node returns a Node.js Readable stream.
+      // Deno's Web Streams API is more compatible.
+      // We need to convert Node.js Readable to Deno-compatible ReadableStream then to Uint8Array.
+      // This conversion might be tricky in Deno directly if the SDK provides Node.js streams.
+      // For Supabase Edge Functions, this interaction needs careful handling.
+      // Assuming contentStream can be treated as a ReadableStream (web standard).
+      return await readerToUint8Array(contentStream as Deno.Reader)
+    } catch (error) {
+      console.error(
+        `[AudioService] Failed to download audio for messageId: ${messageId}.`
+      )
+      // The error from the line-bot-sdk is often an HTTPError wrapping an AxiosError.
+      // We try to log the detailed error response from the API.
+      // deno-lint-ignore no-explicit-any
+      const originalError = (error as any).originalError
+      if (originalError && originalError.response) {
+        console.error(
+          '[AudioService] LINE API Error Response:',
+          originalError.response.data
+        )
+      } else {
+        // Fallback for other error types
+        console.error('[AudioService] Full error object:', error)
+      }
+      throw error // Re-throw the error to be handled by the caller
+    }
   }
 
   async saveAudioFile(messageId: string, audioBuffer: Uint8Array): Promise<string> {
