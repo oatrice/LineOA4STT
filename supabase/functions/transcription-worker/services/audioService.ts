@@ -58,10 +58,17 @@ export class AudioService {
       // deno-lint-ignore no-explicit-any
       const originalError = (error as any).originalError
       if (originalError && originalError.response) {
-        console.error(
-          '[AudioService] LINE API Error Response:',
-          originalError.response.data
-        )
+        if (originalError.response.status === 400) {
+          console.error(
+            `[AudioService] LINE API Error 400 (Bad Request): This often means the messageId (${messageId}) is invalid, has expired, or is not for a downloadable media type.`,
+            originalError.response.data
+          )
+        } else {
+          console.error(
+            '[AudioService] LINE API Error Response:',
+            originalError.response.data
+          )
+        }
       } else {
         // Fallback for other error types
         console.error('[AudioService] Full error object:', error)

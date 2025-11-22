@@ -13,10 +13,11 @@ const MAX_CONCURRENT_JOBS = 5;
 function initializeDenoWorkerServices(
   supabaseUrl: string,
   supabaseAnonKey: string,
-  lineChannelAccessToken: string
+  lineChannelAccessToken: string,
+  lineChannelSecret: string
 ) {
   const supabase = createClient(supabaseUrl, supabaseAnonKey);
-  const lineClient = new LineClient({ channelAccessToken: lineChannelAccessToken });
+  const lineClient = new LineClient({ channelAccessToken: lineChannelAccessToken, channelSecret: lineChannelSecret });
   const sttService = new STTService(); // Deno-compatible STTService
   const audioService = new AudioService(lineClient, sttService); // Deno-compatible AudioService
   const jobService = new JobService(supabase);
@@ -228,20 +229,22 @@ async function runDenoWorker(
 
 console.log('Supabase Edge Function for Transcription Worker starting up...');
 
-serve(async (req) => {
+serve(async (req: Request) => {
   try {
     const SUPABASE_URL = Deno.env.get('SUPABASE_URL');
     const SUPABASE_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY');
     const LINE_CHANNEL_ACCESS_TOKEN = Deno.env.get('LINE_CHANNEL_ACCESS_TOKEN');
+    const LINE_CHANNEL_SECRET = Deno.env.get('LINE_CHANNEL_SECRET');
 
-    if (!SUPABASE_URL || !SUPABASE_ANON_KEY || !LINE_CHANNEL_ACCESS_TOKEN) {
+    if (!SUPABASE_URL || !SUPABASE_ANON_KEY || !LINE_CHANNEL_ACCESS_TOKEN || !LINE_CHANNEL_SECRET) {
       throw new Error('Missing required environment variables for the worker.');
     }
 
     const services = initializeDenoWorkerServices(
       SUPABASE_URL,
       SUPABASE_ANON_KEY,
-      LINE_CHANNEL_ACCESS_TOKEN
+      LINE_CHANNEL_ACCESS_TOKEN,
+      LINE_CHANNEL_SECRET
     );
 
     const result = await runDenoWorker(services);
