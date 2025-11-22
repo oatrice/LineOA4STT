@@ -81,10 +81,21 @@ interface AppServices {
   audioService: AudioService;
   lineChannelSecret: string;
   lineChannelAccessToken: string;
+  supabaseWorkerUrl: string; // เพิ่ม worker URL
+  supabaseAnonKey: string; // เพิ่ม Supabase Anon Key เข้ามา
 }
 
 export function createApp(services: AppServices) {
-  const { lineClient, jobService, sttService, audioService, lineChannelSecret, lineChannelAccessToken } = services;
+  const { 
+    lineClient, 
+    jobService, 
+    sttService, 
+    audioService, 
+    lineChannelSecret, 
+    lineChannelAccessToken,
+    supabaseWorkerUrl, // รับ worker URL
+    supabaseAnonKey // รับ Anon Key
+  } = services;
 
   // console.log('Current NODE_ENV:', process.env.NODE_ENV); // Keep using process.env for NODE_ENV as it's a global concept
 
@@ -157,22 +168,23 @@ export function createApp(services: AppServices) {
       console.log(`✅ Created job ${job.id} for message ${event.message.id}. It will be processed by a worker.`)
 
       // 3. เรียก Supabase Edge Function (worker) ให้ประมวลผล job
-      const WORKER_URL = process.env.SUPABASE_WORKER_URL;
-      if (!WORKER_URL) {
-        throw new Error('SUPABASE_WORKER_URL environment variable is not set.');
+      if (!supabaseWorkerUrl) {
+        throw new Error('SUPABASE_WORKER_URL is not set in AppServices.');
       }
-      console.log(`📡 Triggering Supabase worker at ${WORKER_URL} for job ${job.id}`);
+      if (!supabaseAnonKey) {
+        throw new Error('SUPABASE_ANON_KEY is not set in AppServices for worker authorization.');
+      }
+
+      console.log(`📡 Triggering Supabase worker at ${supabaseWorkerUrl} for job ${job.id}`);
 
       // ส่ง HTTP request ไปยัง worker โดยไม่ต้องรอ response เพื่อให้ webhook ตอบกลับได้เร็ว
-      fetch(WORKER_URL, {
+      fetch(supabaseWorkerUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          // อาจจะเพิ่ม Authorization header ถ้า worker ต้องการการยืนยันตัวตน
-          // 'Authorization': `Bearer ${process.env.SUPABASE_WORKER_AUTH_TOKEN}`,
+          'Authorization': `Bearer ${supabaseAnonKey}`, // ใช้ Supabase Anon Key ใน Authorization header
         },
-        // ถ้า worker ต้องการข้อมูล job_id ใน body, สามารถเพิ่มได้ดังนี้:
-        // body: JSON.stringify({ jobId: job.id }),
+        body: JSON.stringify({ jobId: job.id }), // ส่ง jobId ใน body
       }).catch(workerError => {
         console.error(`❌ Failed to trigger Supabase worker for job ${job.id}:`, workerError);
         // การไม่สามารถเรียก worker ได้ไม่ควรหยุดการทำงานหลักของ webhook
@@ -500,6 +512,8 @@ async function initializeApp() {
     'SUPABASE_ANON_KEY_FILE'
   )) || ''
 
+  const SUPABASE_WORKER_URL = process.env.SUPABASE_WORKER_URL || '';
+
   // Handle Google Application Credentials
   let googleCredentialsPath: string | undefined
   let googleCredentialsJsonContent: string | undefined
@@ -549,12 +563,13 @@ async function initializeApp() {
   }
 
   // Ensure essential variables are present before proceeding
-  if (!LINE_CHANNEL_SECRET || !LINE_CHANNEL_ACCESS_TOKEN || !SUPABASE_URL || !SUPABASE_ANON_KEY) {
+  if (!LINE_CHANNEL_SECRET || !LINE_CHANNEL_ACCESS_TOKEN || !SUPABASE_URL || !SUPABASE_ANON_KEY || !SUPABASE_WORKER_URL) {
     const missing = []
     if (!LINE_CHANNEL_SECRET) missing.push('LINE_CHANNEL_SECRET')
     if (!LINE_CHANNEL_ACCESS_TOKEN) missing.push('LINE_CHANNEL_ACCESS_TOKEN')
     if (!SUPABASE_URL) missing.push('SUPABASE_URL')
     if (!SUPABASE_ANON_KEY) missing.push('SUPABASE_ANON_KEY')
+    if (!SUPABASE_WORKER_URL) missing.push('SUPABASE_WORKER_URL')
     throw new Error(`Missing required environment variables or secrets: ${missing.join(', ')}. Please check your .env file or Render secrets.`)
   }
 
@@ -577,7 +592,9 @@ async function initializeApp() {
     sttService,
     audioService,
     lineChannelSecret: LINE_CHANNEL_SECRET,
-    lineChannelAccessToken: LINE_CHANNEL_ACCESS_TOKEN, // Pass access token
+    lineChannelAccessToken: LINE_CHANNEL_ACCESS_TOKEN,
+    supabaseWorkerUrl: SUPABASE_WORKER_URL, // ส่ง worker URL
+    supabaseAnonKey: SUPABASE_ANON_KEY, // ส่ง Anon Key
   }).handle
 }
 
