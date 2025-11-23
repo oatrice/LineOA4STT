@@ -10,6 +10,7 @@ export interface STTResult {
   transcript: string
   confidence: number
   provider: 'azure' | 'google'
+  isFallback: boolean
 }
 
 export interface STTConfig {
@@ -133,10 +134,10 @@ export class STTService {
                 console.log(`[STTService] Azure recognized speech: ${result.text}`)
                 const transcript = result.text
                 const confidence = 0.9 // Placeholder confidence for Azure
-                resolve({ transcript, confidence, provider: 'azure' })
+                resolve({ transcript, confidence, provider: 'azure', isFallback: false })
               } else if (result.reason === sdk.ResultReason.NoMatch) {
                 console.log('[STTService] Azure returned NoMatch.')
-                resolve({ transcript: '', confidence: 0, provider: 'azure' })
+                resolve({ transcript: '', confidence: 0, provider: 'azure', isFallback: false })
               } else {
                 reject(new Error(`Azure STT failed: ${result.reason}, details: ${result.errorDetails}`))
               }
@@ -195,7 +196,9 @@ export class STTService {
           response.results?.[0]?.alternatives?.[0]?.confidence || 0
 
         console.log('✅ Google Cloud STT successful.')
-        return { transcript, confidence, provider: 'google' }
+        // Determine if this was a fallback
+        const isFallback = !!(this.azureSpeechConfig && azureError);
+        return { transcript, confidence, provider: 'google', isFallback }
       } catch (error) {
         const googleError = error instanceof Error ? error : new Error(String(error))
         console.error('❌ Google Cloud STT failed:', googleError.message)

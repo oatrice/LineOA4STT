@@ -90,7 +90,7 @@ export function createApp(services: AppServices) {
 
   // ฟังก์ชันสำหรับส่งข้อความแจ้งข้อผิดพลาด
   async function sendErrorMessage(
-    replyToken: string | undefined, 
+    replyToken: string | undefined,
     userId: string | undefined,
     groupId: string | undefined,
     roomId: string | undefined,
@@ -99,7 +99,7 @@ export function createApp(services: AppServices) {
     try {
       console.log('😢 Trying to send error message to user...');
       const errorText = `ขออภัยครับ เกิดข้อผิดพลาดในการประมวลผล: ${errorMessage} 🙏`;
-      
+
       // ใช้ pushMessage เสมอเพื่อส่งข้อความแจ้งข้อผิดพลาด เนื่องจาก replyToken อาจหมดอายุได้
       let to: string | undefined;
       if (groupId) {
@@ -109,7 +109,7 @@ export function createApp(services: AppServices) {
       } else if (userId) {
         to = userId;
       }
-      
+
       if (to) {
         await lineClient.pushMessage(to, {
           type: 'text',
@@ -212,7 +212,7 @@ export function createApp(services: AppServices) {
         return
       }
       job = retrievedJob; // Assign to the non-nullable 'job' variable after the null check
-      
+
       replyToken = job.reply_token
       groupId = job.group_id
       roomId = job.room_id
@@ -285,16 +285,27 @@ export function createApp(services: AppServices) {
 
       // Send result to user using push_message
       console.log(`✉️ Sending transcription result using push_message to ${to}`)
+
+      let replyText = `✨ เสร็จแล้วครับ!\n\nจาก: ${displayName}\nข้อความเมื่อ ${timeString}\nผลลัพธ์: ${result.transcript}`
+
+      const isDev = process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'local';
+      if (isDev) {
+        replyText += `\n\n----------------\nProvider: ${result.provider}\nJob ID: ${jobId}`
+        if (result.isFallback) {
+          replyText += `\nFallback: Yes (Google)`
+        }
+      }
+
       await lineClient.pushMessage(to, {
         type: 'text',
-        text: `✨ เสร็จแล้วครับ!\n\nจาก: ${displayName}\nข้อความเมื่อ ${timeString}\nผลลัพธ์: ${result.transcript}`,
+        text: replyText,
       })
 
       console.log(`✅ Completed job ${jobId}`)
     } catch (error) {
       console.error('❌ Error in async processing:', error)
       processingError = error instanceof Error ? error : new Error(String(error))
-      
+
       // ส่งข้อความแจ้งข้อผิดพลาดเมื่อเกิดข้อผิดพลาดใน processAudioAsync
       await sendErrorMessage(
         replyToken,
@@ -328,7 +339,7 @@ export function createApp(services: AppServices) {
       // Validate LINE signature for POST /webhook before body parsing
       if (request.method === 'POST' && new URL(request.url).pathname === '/webhook') {
         const signature = request.headers.get('x-line-signature')
-        
+
         if (!signature) {
           console.error('⚠️ Missing x-line-signature header')
           set.status = 401
@@ -342,12 +353,12 @@ export function createApp(services: AppServices) {
         // Clone request to read body without consuming it
         const clonedRequest = request.clone()
         const rawBody = await clonedRequest.text()
-        
-      // Line uses HMAC-SHA256 with channel secret
-      const hash = createHmac('sha256', lineChannelSecret)
-        .update(rawBody)
-        .digest('base64')
-        
+
+        // Line uses HMAC-SHA256 with channel secret
+        const hash = createHmac('sha256', lineChannelSecret)
+          .update(rawBody)
+          .digest('base64')
+
         if (signature !== hash) {
           console.error('⚠️ Invalid Line signature detected')
           set.status = 401
@@ -357,7 +368,7 @@ export function createApp(services: AppServices) {
             { status: 401 }
           )
         }
-        
+
         console.log('✅ Valid Line signature')
       }
     })
@@ -368,87 +379,87 @@ export function createApp(services: AppServices) {
         try {
           // Type-safe parse ของ webhook payload (validated by schema)
           const webhookData = body as LineWebhookPayload
-        
-        console.log(`📨 Received ${webhookData.events.length} events from ${webhookData.destination}`)
-        
-        // Process events
-        for (const event of webhookData.events) {
-          console.log(`🔍 Processing event type: ${event.type}`)
-          
-          if (event.type === 'message' && event.message) {
-            switch (event.message.type) {
-              case 'text':
-                // --- START: เพิ่ม Logic การตอบกลับข้อความ ---
-                try {
-                  if (event.message.text === 'สวัสดี' && event.replyToken) {
-                    await lineClient.replyMessage(event.replyToken, {
-                      type: 'text',
-                      text: 'สวัสดีครับ! มีอะไรให้ช่วยไหมครับ?'
-                    });
+
+          console.log(`📨 Received ${webhookData.events.length} events from ${webhookData.destination}`)
+
+          // Process events
+          for (const event of webhookData.events) {
+            console.log(`🔍 Processing event type: ${event.type}`)
+
+            if (event.type === 'message' && event.message) {
+              switch (event.message.type) {
+                case 'text':
+                  // --- START: เพิ่ม Logic การตอบกลับข้อความ ---
+                  try {
+                    if (event.message.text === 'สวัสดี' && event.replyToken) {
+                      await lineClient.replyMessage(event.replyToken, {
+                        type: 'text',
+                        text: 'สวัสดีครับ! มีอะไรให้ช่วยไหมครับ?'
+                      });
+                    }
+                  } catch (error) {
+                    console.error('❌ Error handling text message:', error);
+                    // ส่งข้อความแจ้งข้อผิดพลาดสำหรับข้อความ
+                    await sendErrorMessage(
+                      event.replyToken,
+                      event.source.userId,
+                      event.source.groupId,
+                      event.source.roomId,
+                      'เกิดข้อผิดพลาดในการตอบกลับข้อความ'
+                    );
                   }
-                } catch (error) {
-                  console.error('❌ Error handling text message:', error);
-                  // ส่งข้อความแจ้งข้อผิดพลาดสำหรับข้อความ
-                  await sendErrorMessage(
-                    event.replyToken,
-                    event.source.userId,
-                    event.source.groupId,
-                    event.source.roomId,
-                    'เกิดข้อผิดพลาดในการตอบกลับข้อความ'
-                  );
-                }
-                // --- END: เพิ่ม Logic การตอบกลับข้อความ ---
-                console.log(`💬 Text message: ${event.message.text}`)
-                break
-              case 'audio':
-                console.log(`🎵 Audio message: ${event.message.id}`)
-                try {
-                  await handleAudioMessage(event)
-                } catch (error) {
-                  console.error('❌ Error handling audio message:', error);
-                  // ข้อความแจ้งข้อผิดพลาดจะถูกส่งภายใน handleAudioMessage แล้ว
-                }
-                break
-              case 'image':
-                console.log(`🖼️ Image message: ${event.message.id}`)
-                break
-              default:
-                console.log(`📎 Other message type: ${event.message.type}`)
-                try {
-                  if (event.replyToken) {
-                    await lineClient.replyMessage(event.replyToken, {
-                      type: 'text',
-                      text: 'ขออภัยครับ บอทยังไม่รองรับข้อความประเภทนี้ในตอนนี้ 🙏'
-                    })
+                  // --- END: เพิ่ม Logic การตอบกลับข้อความ ---
+                  console.log(`💬 Text message: ${event.message.text}`)
+                  break
+                case 'audio':
+                  console.log(`🎵 Audio message: ${event.message.id}`)
+                  try {
+                    await handleAudioMessage(event)
+                  } catch (error) {
+                    console.error('❌ Error handling audio message:', error);
+                    // ข้อความแจ้งข้อผิดพลาดจะถูกส่งภายใน handleAudioMessage แล้ว
                   }
-                } catch (error) {
-                  console.error('❌ Error handling unsupported message type:', error);
-                  // ส่งข้อความแจ้งข้อผิดพลาดสำหรับข้อความที่ไม่รองรับ
-                  await sendErrorMessage(
-                    event.replyToken,
-                    event.source.userId,
-                    event.source.groupId,
-                    event.source.roomId,
-                    'เกิดข้อผิดพลาดในการตอบกลับข้อความ'
-                  );
-                }
-                break
+                  break
+                case 'image':
+                  console.log(`🖼️ Image message: ${event.message.id}`)
+                  break
+                default:
+                  console.log(`📎 Other message type: ${event.message.type}`)
+                  try {
+                    if (event.replyToken) {
+                      await lineClient.replyMessage(event.replyToken, {
+                        type: 'text',
+                        text: 'ขออภัยครับ บอทยังไม่รองรับข้อความประเภทนี้ในตอนนี้ 🙏'
+                      })
+                    }
+                  } catch (error) {
+                    console.error('❌ Error handling unsupported message type:', error);
+                    // ส่งข้อความแจ้งข้อผิดพลาดสำหรับข้อความที่ไม่รองรับ
+                    await sendErrorMessage(
+                      event.replyToken,
+                      event.source.userId,
+                      event.source.groupId,
+                      event.source.roomId,
+                      'เกิดข้อผิดพลาดในการตอบกลับข้อความ'
+                    );
+                  }
+                  break
+              }
             }
+
+            // TODO: Add other event types (follow, unfollow, etc.)
           }
-          
-          // TODO: Add other event types (follow, unfollow, etc.)
+
+          // ตอบกลับ Line platform ว่าได้รับ webhook แล้ว
+          set.status = 200
+          return { status: 'ok', message: 'Webhook processed successfully' }
+
+        } catch (error) {
+          console.error('❌ Webhook error:', error)
+          set.status = 500
+          return { status: 'error', message: 'Internal server error' }
         }
-        
-        // ตอบกลับ Line platform ว่าได้รับ webhook แล้ว
-        set.status = 200
-        return { status: 'ok', message: 'Webhook processed successfully' }
-        
-      } catch (error) {
-        console.error('❌ Webhook error:', error)
-        set.status = 500
-        return { status: 'error', message: 'Internal server error' }
-      }
-    },
+      },
       {
         body: LineWebhookPayloadSchema,
       }
