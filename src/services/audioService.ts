@@ -23,6 +23,7 @@ export interface AudioProcessingResult {
   transcript: string
   confidence: number
   provider: 'azure' | 'google' // Add provider field
+  isFallback: boolean
   audioFilePath: string
   convertedAudioPath: string
 }
@@ -65,8 +66,7 @@ export class AudioService {
       )
     } catch (error) {
       throw new Error(
-        `FFmpeg conversion failed: ${
-          error instanceof Error ? error.message : 'Unknown error'
+        `FFmpeg conversion failed: ${error instanceof Error ? error.message : 'Unknown error'
         }`
       )
     }
@@ -115,6 +115,7 @@ export class AudioService {
         transcript: sttResult.transcript,
         confidence: sttResult.confidence,
         provider: sttResult.provider, // Pass the provider from STTResult
+        isFallback: sttResult.isFallback,
         audioFilePath,
         convertedAudioPath,
       }
