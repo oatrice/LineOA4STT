@@ -286,10 +286,14 @@ export function createApp(services: AppServices) {
       // Send result to user using push_message
       console.log(`✉️ Sending transcription result using push_message to ${to}`)
 
-      let replyText = `✨ เสร็จแล้วครับ!\n\nจาก: ${displayName}\nข้อความเมื่อ ${timeString}\nผลลัพธ์: ${result.transcript}\n\n----------------\nProvider: ${result.provider}\nJob ID: ${jobId}`
+      let replyText = `✨ เสร็จแล้วครับ!\n\nจาก: ${displayName}\nข้อความเมื่อ ${timeString}\nผลลัพธ์: ${result.transcript}`
 
-      if (result.isFallback) {
-        replyText += `\nFallback: Yes (Google)`
+      const isDev = process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'local';
+      if (isDev) {
+        replyText += `\n\n----------------\nProvider: ${result.provider}\nJob ID: ${jobId}`
+        if (result.isFallback) {
+          replyText += `\nFallback: Yes (Google)`
+        }
       }
 
       await lineClient.pushMessage(to, {
