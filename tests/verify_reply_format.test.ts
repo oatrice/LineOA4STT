@@ -6,7 +6,7 @@ describe('Reply Message Formatting', () => {
     const jobId = 'job-123'
     const transcript = 'Hello World'
 
-    it('should format message correctly for Azure (no fallback) in DEV', () => {
+    it('should format message correctly for Azure (no fallback) in DEV1', () => {
         process.env.NODE_ENV = 'development'
         const result = {
             transcript,
